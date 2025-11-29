@@ -1,25 +1,25 @@
+/* ============================================================
+      GOOGLE-SHEETS CSV LINK (FUNKTIONIERT IM BROWSER!)
+   ============================================================ */
 
-
-// Google Sheet → Datei → Im Web veröffentlichen → CSV auswählen
 const GOOGLE_SHEETS_CSV_URL =
-    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3s5qCrJ2PDoIjbIP9YvNtyUszeiPmko9OGT_saIHe9LneN80kXpSzHTlqGXGdgW93ta2kNvjtl_4k/pubhtml";  // <-- WICHTIG
-
+  "https://docs.google.com/spreadsheets/d/1993f7-GVNOEetat7rIFJ61WZN8zaqPGRb0ExCwWpjnM/export?format=csv&gid=0";
 
 
 /* ============================================================
-      CSV → JSON PARSER
+      CSV → JSON
    ============================================================ */
 
 async function loadSheetData() {
-    const csv = await fetch(https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3s5qCrJ2PDoIjbIP9YvNtyUszeiPmko9OGT_saIHe9LneN80kXpSzHTlqGXGdgW93ta2kNvjtl_4k/pubhtml).then(r => r.text());
+
+    const csv = await fetch(GOOGLE_SHEETS_CSV_URL).then(r => r.text());
+
     const rows = csv.trim().split("\n").map(r => r.split(","));
     const headers = rows[0].map(h => h.trim());
 
     return rows.slice(1).map(row => {
         let obj = {};
-        headers.forEach((h, i) => {
-            obj[h] = (row[i] ? row[i].trim() : "");
-        });
+        headers.forEach((h, i) => obj[h] = row[i]?.trim());
         return obj;
     });
 }
@@ -27,10 +27,9 @@ async function loadSheetData() {
 
 
 /* ============================================================
-      VERHANDLUNGSLOGIK (NEU)
+      NEUE VERHANDLUNGSLOGIK
    ============================================================ */
 
-// Runde 1–3 → große Schritte (250–500€) abhängig vom Nutzerangebot
 function calculateEarlyReduction(userOffer) {
     const MAX = 500;
     const MIN = 250;
@@ -38,15 +37,13 @@ function calculateEarlyReduction(userOffer) {
 
     if (userOffer >= THRESHOLD) return MAX;
 
-    const ratio = userOffer / THRESHOLD; // 0–1
+    const ratio = userOffer / THRESHOLD; 
     return Math.round(MIN + ratio * (MAX - MIN));
 }
 
-// Ab Runde 4 → kleine Schritte Richtung Schmerzgrenze
 function calculateLateReduction(currentPrice, minPrice, round, maxRounds) {
     const remaining = currentPrice - minPrice;
     const remainingRounds = maxRounds - round + 1;
-
     return Math.max(5, Math.round(remaining / remainingRounds));
 }
 
@@ -57,7 +54,7 @@ function randInt(min, max) {
 
 
 /* ============================================================
-      BROWSER: VERHANDLUNGSDATEN
+      VERHANDLUNGSZUSTAND
    ============================================================ */
 
 let state = null;
@@ -75,17 +72,16 @@ async function loadVehicle() {
     const car = data.find(x => x.ID === String(id));
 
     if (!car) {
-        document.getElementById("carData").innerHTML = "❌ Fahrzeug nicht gefunden.";
+        document.getElementById("carData").innerHTML = "❌ Fahrzeug nicht gefunden!";
         return;
     }
 
     const startPrice = Number(car.Startpreis);
     const minPrice = Number(car.Schmerzgrenze);
-    const maxRounds = randInt(7, 12);
 
     state = {
         round: 1,
-        maxRounds,
+        maxRounds: randInt(7,12),
         currentPrice: startPrice,
         startPrice,
         minPrice,
@@ -93,16 +89,15 @@ async function loadVehicle() {
         history: []
     };
 
-    // Ausgabe im Browser
     document.getElementById("carData").innerHTML = `
         <b>Fahrzeug:</b> ${car.Fahrzeug}<br>
         <b>Startpreis:</b> ${startPrice} €<br>
         <b>Schmerzgrenze:</b> ${minPrice} €<br>
-        <b>Runden:</b> ${maxRounds}<br>
+        <b>Runden:</b> ${state.maxRounds}
     `;
 
     document.getElementById("log").innerHTML =
-        `Verhandlung gestartet! Verkäufer startet mit <b>${startPrice} €</b>.`;
+        `🔵 Verkäufer startet mit <b>${startPrice} €</b>.`;
 }
 
 
@@ -112,64 +107,44 @@ async function loadVehicle() {
    ============================================================ */
 
 function sendOffer() {
-    if (!state) {
-        alert("Bitte erst Fahrzeug laden!");
-        return;
-    }
+    if (!state) return alert("Bitte erst Fahrzeug laden.");
 
     const userOffer = Number(document.getElementById("userOffer").value);
+    if (!userOffer) return alert("Bitte ein Angebot eingeben.");
 
-    if (!userOffer || isNaN(userOffer)) {
-        alert("Bitte gültigen Betrag eingeben.");
-        return;
-    }
-
-    let sellerOffer;
     const prev = state.currentPrice;
+    let sellerOffer;
 
-    // große Schritte (Runde 1–3)
     if (state.round <= 3) {
         sellerOffer = prev - calculateEarlyReduction(userOffer);
-    }
-
-    // kleine Schritte (Runde >=4)
-    else {
+    } else {
         sellerOffer = prev - calculateLateReduction(prev, state.minPrice, state.round, state.maxRounds);
     }
 
-    // Schmerzgrenze einhalten
     if (sellerOffer < state.minPrice) sellerOffer = state.minPrice;
-
     state.currentPrice = sellerOffer;
 
-    // History speichern
     state.history.push({
         round: state.round,
         user: userOffer,
         seller: sellerOffer
     });
 
-    // Ausgabe im Browser
     const log = document.getElementById("log");
     log.innerHTML += `
         <br><br><b>Runde ${state.round}</b><br>
-        Nutzer bietet: ${userOffer} €<br>
-        Verkäufer bietet: ${sellerOffer} €`;
+        👤 Nutzer: ${userOffer} €<br>
+        🏷️ Verkäufer: ${sellerOffer} €
+    `;
+
+    if (Math.abs(userOffer - sellerOffer) <= 100) {
+        log.innerHTML += `<br><br><b>🎉 Einigung bei ${userOffer} € (Auto-Accept)</b>`;
+    }
 
     state.round++;
 
-    // Ende erreicht?
     if (state.round > state.maxRounds) {
-        log.innerHTML += `<br><br><b>⛔ Maximale Runden erreicht!</b>`;
-    }
-
-    // Auto-Accept
-    if (Math.abs(userOffer - sellerOffer) <= 100) {
-        log.innerHTML += `<br><br><b>🎉 Auto-Accept! Einigung bei ${userOffer} €.</b>`;
+        log.innerHTML += `<br><br><b>⛔ Maximale Runden erreicht.</b>`;
     }
 }
-
-
-
-
 
