@@ -16,9 +16,8 @@ const eur = n =>
 ============================================================ */
 
 function newState() {
-  const randomInitial = randInt(5500); // Startpreis
-  const randomMin = randomInitial - randInt(3500); // Schmerzgrenze
-
+ const startpreis = 5500;     // Fester Startpreis
+  const schmerzgrenze = 3500;  //
   return {
     participant_id: crypto.randomUUID?.() ||
       ("x_" + Date.now() + Math.random().toString(36).slice(2)),
@@ -583,6 +582,7 @@ function viewFinish(accepted){
 
 // === Start ===================================================================
 viewVignette();
+
 
 
 
