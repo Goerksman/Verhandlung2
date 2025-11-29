@@ -1,14 +1,20 @@
 
+
+// Google Sheet → Datei → Im Web veröffentlichen → CSV
 const GOOGLE_SHEETS_CSV_URL =
-  https://docs.google.com/spreadsheets/d/1993f7-GVNOEetat7rIFJ61WZN8zaqPGRb0ExCwWpjnM/edit?gid=1523776226#gid=1523776226; // 
- 
+    "https://docs.google.com/spreadsheets/d/1993f7-GVNOEetat7rIFJ61WZN8zaqPGRb0ExCwWpjnM/edit?gid=1523776226#gid=1523776226";
 
 
 
+/* ============================================================
+      CSV LADEN (Google Sheets)
+   ============================================================ */
 
 async function loadSheetData() {
+    const fetch = (await import("node-fetch")).default;
+
     const csv = await fetch(GOOGLE_SHEETS_CSV_URL).then(r => r.text());
-    const rows = csv.split("\n").map(r => r.split(","));
+    const rows = csv.trim().split("\n").map(r => r.split(","));
     const headers = rows[0].map(h => h.trim());
 
     return rows.slice(1).map(row => {
@@ -23,41 +29,30 @@ async function loadSheetData() {
 
 
 /* ============================================================
-      🟧 VERHANDLUNGSSTIL (Neue Logik!)
+      NEUE VERHANDLUNGSLOGIK
    ============================================================ */
 
-// Runde 1–3 → große Schritte 250–500 €, abhängig vom Nutzerangebot
+// Runde 1–3 → 250–500 € Reduktion, abhängig vom Nutzerangebot
 function calculateEarlyReduction(userOffer) {
-    const maxReduction = 500;
-    const minReduction = 250;
-    const threshold = 3000;
+    const MAX = 500;
+    const MIN = 250;
+    const THRESHOLD = 3000;
 
-    // Nutzer bietet >= 3000 → volle Reduktion 500€
-    if (userOffer >= threshold) {
-        return maxReduction;
-    }
+    if (userOffer >= THRESHOLD) return MAX;
 
-    // Verhältnis (0–1)
-    const ratio = userOffer / threshold;
+    const ratio = userOffer / THRESHOLD;     // 0–1
 
-    // Dynamisch 250–500 €, je höher das Nutzerangebot, desto mehr Reduktion
-    const reduction = minReduction + ((maxReduction - minReduction) * ratio);
-
-    return Math.round(reduction);
+    return Math.round(MIN + ratio * (MAX - MIN));
 }
 
-// Ab Runde 4 → Schritte werden kleiner, abhängig vom Restabstand
+// Ab Runde 4 → kleine, dynamische Schritte Richtung Schmerzgrenze
 function calculateLateReduction(currentPrice, minPrice, round, maxRounds) {
     const remaining = currentPrice - minPrice;
     const remainingRounds = maxRounds - round + 1;
 
-    // Durchschnittlicher dynamischer Schritt Richtung Schmerzgrenze
-    const reduction = remaining / remainingRounds;
-
-    return Math.round(reduction);
+    return Math.max(5, Math.round(remaining / remainingRounds));
 }
 
-// Hilfsfunktion (Zufallszahl)
 function randInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -65,129 +60,124 @@ function randInt(min, max) {
 
 
 /* ============================================================
-      🟩 VERHANDLUNGSENGINE
+      VERHANDLUNGSENGINE
    ============================================================ */
 
-function sellerCounterOffer(state, userOffer) {
+async function startNegotiation(vehicleId) {
 
-    const { round, maxRounds, currentPrice, minPrice } = state;
-    let reduction;
-
-    // ---------------------------------------
-    // 🟦 Erste 3 Runden → große Schritte
-    // ---------------------------------------
-    if (round <= 3) {
-        reduction = calculateEarlyReduction(userOffer);
-    }
-
-    // ---------------------------------------
-    // 🟧 Ab Runde 4 → kleine Schritte
-    // ---------------------------------------
-    else {
-        reduction = calculateLateReduction(currentPrice, minPrice, round, maxRounds);
-    }
-
-    // ---------------------------------------
-    // Neues Angebot berechnen
-    // ---------------------------------------
-    let newPrice = currentPrice - reduction;
-    if (newPrice < minPrice) newPrice = minPrice;
-
-    // State aktualisieren
-    state.currentPrice = newPrice;
-    state.round++;
-
-    return newPrice;
-}
-
-
-
-/* ============================================================
-      🟨 VERHANDLUNG STARTEN (mit Daten aus Google Sheets)
-   ============================================================ */
-
-async function startNegotiationFromSheets(vehicleID) {
-
-    console.log("📄 Lade Daten aus Google Sheets ...");
+    console.log("📄 Lade Fahrzeugdaten aus Google Sheets ...");
 
     const data = await loadSheetData();
 
-    const car = data.find(x => x.ID === String(vehicleID));
-
+    const car = data.find(x => x.ID === String(vehicleId));
     if (!car) {
-        console.error("❌ Fahrzeug mit dieser ID nicht gefunden.");
+        console.error("❌ Fahrzeug nicht gefunden!");
         return;
     }
 
-    // Werte aus Google Sheets
-    const startPrice = Number(car.Startpreis);
+    const initialOffer = Number(car.Startpreis);
     const minPrice = Number(car.Schmerzgrenze);
-
-    // Zufällige Runden 7–12
     const maxRounds = randInt(7, 12);
 
-    console.log("====================================");
-    console.log("🚗 Fahrzeug:", car.Fahrzeug);
-    console.log("🔵 Startpreis:", startPrice);
-    console.log("🔴 Schmerzgrenze:", minPrice);
-    console.log("🔁 Anzahl Runden:", maxRounds);
-    console.log("====================================");
+    console.log(`\n=== Verhandlung gestartet: ${car.Fahrzeug} ===`);
+    console.log(`🔵 Startpreis: ${initialOffer} €`);
+    console.log(`🔴 Schmerzgrenze: ${minPrice} €`);
+    console.log(`🔁 Runden: ${maxRounds}`);
+    console.log("=================================================");
 
-    const state = {
-        round: 1,
-        maxRounds,
-        startPrice,
-        currentPrice: startPrice,
-        minPrice
-    };
+    let current = initialOffer;
+    let round = 1;
+    let history = [];
+    let finished = false;
+    let dealPrice = null;
 
-    return state;
+    while (!finished && round <= maxRounds) {
+
+        console.log(`\n📘 Runde ${round}/${maxRounds}`);
+        console.log(`🏷️ Verkäufer bietet: ${current} €`);
+
+        // Nutzerfragen (Terminal)
+        const userOffer = await askUser("👤 Dein Gegenangebot (oder Enter für Annehmen): ");
+
+        if (userOffer === "") {
+            console.log(`\n✔ Du hast angenommen: ${current} €`);
+            finished = true;
+            dealPrice = current;
+            break;
+        }
+
+        const userVal = Number(userOffer);
+
+        history.push({ round, seller: current, user: userVal });
+
+        // Auto-Accept
+        if (Math.abs(userVal - current) <= 100) {
+            console.log("\n🎉 Auto-Accept: Differenz < 100 €");
+            dealPrice = userVal;
+            finished = true;
+            break;
+        }
+
+        // Verkäufer berechnet neues Angebot
+        let reduction;
+
+        if (round <= 3) {
+            reduction = calculateEarlyReduction(userVal);
+        } else {
+            reduction = calculateLateReduction(current, minPrice, round, maxRounds);
+        }
+
+        console.log(`📉 Reduktion: -${reduction} €`);
+
+        current = current - reduction;
+        if (current < minPrice) current = minPrice;
+
+        round++;
+        await sleep(500 + randInt(200, 600));
+    }
+
+    console.log("\n================= ENDE =================");
+
+    if (finished && dealPrice !== null) {
+        console.log(`🎯 Einigung erzielt: ${dealPrice} €`);
+    } else {
+        console.log(`❌ Keine Einigung. Letztes Angebot: ${current} €`);
+    }
+
+    console.log("\n📄 Verhandlungsverlauf:");
+    console.table(history);
 }
 
 
 
 /* ============================================================
-      🟪 BEISPIEL-VERHANDLUNG (Terminal)
+      HELFERFUNKTIONEN (Node.js)
    ============================================================ */
 
-async function runExample(vehicleID) {
+function askUser(question) {
+    return new Promise(res => {
+        const rl = require("readline").createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+        rl.question(question, answer => {
+            rl.close();
+            res(answer);
+        });
+    });
+}
 
-    const state = await startNegotiationFromSheets(vehicleID);
-
-    if (!state) return;
-
-    // Beispielhafte Nutzerangebote
-    const userOffers = [2000, 2500, 2800, 3200, 3500, 3800, 4000, 4300, 4600];
-
-    for (const offer of userOffers) {
-        if (state.round > state.maxRounds) {
-            console.log("❌ Max. Runden erreicht.");
-            break;
-        }
-
-        console.log(`\n🟦 Runde ${state.round}/${state.maxRounds}`);
-        console.log(`👤 Nutzer bietet: ${offer} €`);
-
-        const newOffer = sellerCounterOffer(state, offer);
-
-        console.log(`🏷️ Verkäufer bietet: ${newOffer} €`);
-        console.log("------------------------------------");
-
-        if (offer >= newOffer) {
-            console.log(`✅ Der Verkäufer akzeptiert dein Angebot!`);
-            break;
-        }
-    }
-
-    console.log("\n🏁 Verhandlung beendet.");
+function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
 }
 
 
 
-// ============================================================
-// STARTE TESTVERHANDLUNG (ID = 1 aus Google Sheets)
-// ============================================================
-runExample(1);
+/* ============================================================
+      VERHANDLUNG STARTEN
+   ============================================================ */
 
+// Beispiel: Fahrzeug mit ID = 1 aus Google Sheets
+startNegotiation(1);
 
 
