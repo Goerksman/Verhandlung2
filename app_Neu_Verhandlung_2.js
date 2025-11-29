@@ -1,32 +1,4 @@
 /* ============================================================
-      GOOGLE SHEETS KONFIGURATION
-   ============================================================ */
-
-// --- CSV-Link deiner Tabelle ---
-const GOOGLE_SHEETS_CSV_URL =
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3s5qCrJ2PDoIjbIP9YvNtyUszeiPmko9OGT_saIHe9LneN80kXpSzHTlqGXGdgW93ta2kNvjtl_4k/pub?gid=0&single=true&output=csv";
-
-
-/* ============================================================
-      CSV → JSON LADEN
-   ============================================================ */
-
-async function loadSheetData() {
-  const csv = await fetch(GOOGLE_SHEETS_CSV_URL).then(r => r.text());
-  const rows = csv.trim().split("\n").map(r => r.split(","));
-  const headers = rows[0].map(h => h.trim());
-
-  return rows.slice(1).map(row => {
-    let obj = {};
-    headers.forEach((h, i) => {
-      obj[h] = (row[i] ? row[i].trim() : "");
-    });
-    return obj;
-  });
-}
-
-
-/* ============================================================
       NEUE VERHANDLUNGS-REDUKTIONSLOGIK
    ============================================================ */
 
@@ -495,3 +467,4 @@ function viewFinish(accepted){
 
 // === Start ===================================================================
 viewVignette();
+
