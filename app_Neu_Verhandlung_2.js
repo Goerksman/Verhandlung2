@@ -2,7 +2,7 @@
 
 // Google Sheet → Datei → Im Web veröffentlichen → CSV auswählen
 const GOOGLE_SHEETS_CSV_URL =
-    "https://docs.google.com/spreadsheets/d/1993f7-GVNOEetat7rIFJ61WZN8zaqPGRb0ExCwWpjnM/edit?gid=1523776226#gid=1523776226";  // <-- WICHTIG
+    "https://docs.google.com/spreadsheets/d/1993f7-GVNOEetat7rIFJ61WZN8zaqPGRb0ExCwWpjnM/edit?pli=1&gid=0#gid=0";  // <-- WICHTIG
 
 
 
@@ -168,5 +168,6 @@ function sendOffer() {
         log.innerHTML += `<br><br><b>🎉 Auto-Accept! Einigung bei ${userOffer} €.</b>`;
     }
 }
+
 
 
