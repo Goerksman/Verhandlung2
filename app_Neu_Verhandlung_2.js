@@ -119,14 +119,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Lade Daten → dann UI
-  loadSheetData().then(data => {
-    renderLoadCar(data);
-  }).catch(err => {
-    app.innerHTML = `<p style="color:red;">Fehler beim Laden der Fahrzeugdaten.</p>`;
-    console.error(err);
-  });
-});
 
 
 
