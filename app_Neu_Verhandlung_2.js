@@ -16,18 +16,19 @@ const eur = n =>
 ============================================================ */
 
 function newState() {
- const startpreis = 5500;     // Fester Startpreis
-  const schmerzgrenze = 3500;  //
+  const startpreis = 5500;     // Fester Startpreis
+  const schmerzgrenze = 4500;  // Beispiel: Feste Schmerzgrenze (1000 drunter)
+
   return {
     participant_id: crypto.randomUUID?.() ||
       ("x_" + Date.now() + Math.random().toString(36).slice(2)),
 
     runde: 1,
-    max_runden: randInt(7, 12),
+    max_runden: randInt(8, 12), // wie gewünscht
 
-    initial_offer: randomInitial,
-    min_price: randomMin,
-    current_offer: randomInitial,
+    initial_offer: startpreis,
+    min_price: schmerzgrenze,
+    current_offer: startpreis,
 
     history: [],
 
@@ -582,6 +583,7 @@ function viewFinish(accepted){
 
 // === Start ===================================================================
 viewVignette();
+
 
 
 
