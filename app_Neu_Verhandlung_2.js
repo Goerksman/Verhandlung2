@@ -1,18 +1,16 @@
 
 
-// Google Sheet → Datei → Im Web veröffentlichen → CSV
+// Google Sheet → Datei → Im Web veröffentlichen → CSV auswählen
 const GOOGLE_SHEETS_CSV_URL =
-    "https://docs.google.com/spreadsheets/d/1993f7-GVNOEetat7rIFJ61WZN8zaqPGRb0ExCwWpjnM/edit?gid=1523776226#gid=1523776226";
+    "https://docs.google.com/spreadsheets/d/1993f7-GVNOEetat7rIFJ61WZN8zaqPGRb0ExCwWpjnM/edit?gid=1523776226#gid=1523776226";  // <-- WICHTIG
 
 
 
 /* ============================================================
-      CSV LADEN (Google Sheets)
+      CSV → JSON PARSER
    ============================================================ */
 
 async function loadSheetData() {
-    const fetch = (await import("node-fetch")).default;
-
     const csv = await fetch(GOOGLE_SHEETS_CSV_URL).then(r => r.text());
     const rows = csv.trim().split("\n").map(r => r.split(","));
     const headers = rows[0].map(h => h.trim());
@@ -29,10 +27,10 @@ async function loadSheetData() {
 
 
 /* ============================================================
-      NEUE VERHANDLUNGSLOGIK
+      VERHANDLUNGSLOGIK (NEU)
    ============================================================ */
 
-// Runde 1–3 → 250–500 € Reduktion, abhängig vom Nutzerangebot
+// Runde 1–3 → große Schritte (250–500€) abhängig vom Nutzerangebot
 function calculateEarlyReduction(userOffer) {
     const MAX = 500;
     const MIN = 250;
@@ -40,12 +38,11 @@ function calculateEarlyReduction(userOffer) {
 
     if (userOffer >= THRESHOLD) return MAX;
 
-    const ratio = userOffer / THRESHOLD;     // 0–1
-
+    const ratio = userOffer / THRESHOLD; // 0–1
     return Math.round(MIN + ratio * (MAX - MIN));
 }
 
-// Ab Runde 4 → kleine, dynamische Schritte Richtung Schmerzgrenze
+// Ab Runde 4 → kleine Schritte Richtung Schmerzgrenze
 function calculateLateReduction(currentPrice, minPrice, round, maxRounds) {
     const remaining = currentPrice - minPrice;
     const remainingRounds = maxRounds - round + 1;
@@ -60,124 +57,116 @@ function randInt(min, max) {
 
 
 /* ============================================================
-      VERHANDLUNGSENGINE
+      BROWSER: VERHANDLUNGSDATEN
    ============================================================ */
 
-async function startNegotiation(vehicleId) {
+let state = null;
 
-    console.log("📄 Lade Fahrzeugdaten aus Google Sheets ...");
 
+
+/* ============================================================
+      FAHRZEUG LADEN
+   ============================================================ */
+
+async function loadVehicle() {
+
+    const id = document.getElementById("vehicleId").value;
     const data = await loadSheetData();
+    const car = data.find(x => x.ID === String(id));
 
-    const car = data.find(x => x.ID === String(vehicleId));
     if (!car) {
-        console.error("❌ Fahrzeug nicht gefunden!");
+        document.getElementById("carData").innerHTML = "❌ Fahrzeug nicht gefunden.";
         return;
     }
 
-    const initialOffer = Number(car.Startpreis);
+    const startPrice = Number(car.Startpreis);
     const minPrice = Number(car.Schmerzgrenze);
     const maxRounds = randInt(7, 12);
 
-    console.log(`\n=== Verhandlung gestartet: ${car.Fahrzeug} ===`);
-    console.log(`🔵 Startpreis: ${initialOffer} €`);
-    console.log(`🔴 Schmerzgrenze: ${minPrice} €`);
-    console.log(`🔁 Runden: ${maxRounds}`);
-    console.log("=================================================");
+    state = {
+        round: 1,
+        maxRounds,
+        currentPrice: startPrice,
+        startPrice,
+        minPrice,
+        car,
+        history: []
+    };
 
-    let current = initialOffer;
-    let round = 1;
-    let history = [];
-    let finished = false;
-    let dealPrice = null;
+    // Ausgabe im Browser
+    document.getElementById("carData").innerHTML = `
+        <b>Fahrzeug:</b> ${car.Fahrzeug}<br>
+        <b>Startpreis:</b> ${startPrice} €<br>
+        <b>Schmerzgrenze:</b> ${minPrice} €<br>
+        <b>Runden:</b> ${maxRounds}<br>
+    `;
 
-    while (!finished && round <= maxRounds) {
-
-        console.log(`\n📘 Runde ${round}/${maxRounds}`);
-        console.log(`🏷️ Verkäufer bietet: ${current} €`);
-
-        // Nutzerfragen (Terminal)
-        const userOffer = await askUser("👤 Dein Gegenangebot (oder Enter für Annehmen): ");
-
-        if (userOffer === "") {
-            console.log(`\n✔ Du hast angenommen: ${current} €`);
-            finished = true;
-            dealPrice = current;
-            break;
-        }
-
-        const userVal = Number(userOffer);
-
-        history.push({ round, seller: current, user: userVal });
-
-        // Auto-Accept
-        if (Math.abs(userVal - current) <= 100) {
-            console.log("\n🎉 Auto-Accept: Differenz < 100 €");
-            dealPrice = userVal;
-            finished = true;
-            break;
-        }
-
-        // Verkäufer berechnet neues Angebot
-        let reduction;
-
-        if (round <= 3) {
-            reduction = calculateEarlyReduction(userVal);
-        } else {
-            reduction = calculateLateReduction(current, minPrice, round, maxRounds);
-        }
-
-        console.log(`📉 Reduktion: -${reduction} €`);
-
-        current = current - reduction;
-        if (current < minPrice) current = minPrice;
-
-        round++;
-        await sleep(500 + randInt(200, 600));
-    }
-
-    console.log("\n================= ENDE =================");
-
-    if (finished && dealPrice !== null) {
-        console.log(`🎯 Einigung erzielt: ${dealPrice} €`);
-    } else {
-        console.log(`❌ Keine Einigung. Letztes Angebot: ${current} €`);
-    }
-
-    console.log("\n📄 Verhandlungsverlauf:");
-    console.table(history);
+    document.getElementById("log").innerHTML =
+        `Verhandlung gestartet! Verkäufer startet mit <b>${startPrice} €</b>.`;
 }
 
 
 
 /* ============================================================
-      HELFERFUNKTIONEN (Node.js)
+      ANGEBOT SENDEN
    ============================================================ */
 
-function askUser(question) {
-    return new Promise(res => {
-        const rl = require("readline").createInterface({
-            input: process.stdin,
-            output: process.stdout
-        });
-        rl.question(question, answer => {
-            rl.close();
-            res(answer);
-        });
+function sendOffer() {
+    if (!state) {
+        alert("Bitte erst Fahrzeug laden!");
+        return;
+    }
+
+    const userOffer = Number(document.getElementById("userOffer").value);
+
+    if (!userOffer || isNaN(userOffer)) {
+        alert("Bitte gültigen Betrag eingeben.");
+        return;
+    }
+
+    let sellerOffer;
+    const prev = state.currentPrice;
+
+    // große Schritte (Runde 1–3)
+    if (state.round <= 3) {
+        sellerOffer = prev - calculateEarlyReduction(userOffer);
+    }
+
+    // kleine Schritte (Runde >=4)
+    else {
+        sellerOffer = prev - calculateLateReduction(prev, state.minPrice, state.round, state.maxRounds);
+    }
+
+    // Schmerzgrenze einhalten
+    if (sellerOffer < state.minPrice) sellerOffer = state.minPrice;
+
+    state.currentPrice = sellerOffer;
+
+    // History speichern
+    state.history.push({
+        round: state.round,
+        user: userOffer,
+        seller: sellerOffer
     });
+
+    // Ausgabe im Browser
+    const log = document.getElementById("log");
+    log.innerHTML += `
+        <br><br><b>Runde ${state.round}</b><br>
+        Nutzer bietet: ${userOffer} €<br>
+        Verkäufer bietet: ${sellerOffer} €`;
+
+    state.round++;
+
+    // Ende erreicht?
+    if (state.round > state.maxRounds) {
+        log.innerHTML += `<br><br><b>⛔ Maximale Runden erreicht!</b>`;
+    }
+
+    // Auto-Accept
+    if (Math.abs(userOffer - sellerOffer) <= 100) {
+        log.innerHTML += `<br><br><b>🎉 Auto-Accept! Einigung bei ${userOffer} €.</b>`;
+    }
 }
-
-function sleep(ms) {
-    return new Promise(r => setTimeout(r, ms));
-}
-
-
-
-/* ============================================================
-      VERHANDLUNG STARTEN
-   ============================================================ */
-
-// Beispiel: Fahrzeug mit ID = 1 aus Google Sheets
-startNegotiation(1);
 
 
