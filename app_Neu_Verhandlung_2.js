@@ -3,7 +3,7 @@
    ============================================================ */
 
 const GOOGLE_SHEETS_CSV_URL =
-  "https://docs.google.com/spreadsheets/d/1993f7-GVNOEetat7rIFJ61WZN8zaqPGRb0ExCwWpjnM/export?format=csv&gid=0";
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3s5qCrJ2PDoIjbIP9YvNtyUszeiPmko9OGT_saIHe9LneN80kXpSzHTlqGXGdgW93ta2kNvjtl_4k/pub?output=ods";
 
 
 /* ============================================================
@@ -147,4 +147,5 @@ function sendOffer() {
         log.innerHTML += `<br><br><b>⛔ Maximale Runden erreicht.</b>`;
     }
 }
+
 
