@@ -170,205 +170,238 @@ function viewAbort(chance) {
     viewVignette();
   };
 }
-/* ============================================================
-   SCREEN: VIGNETTE
-============================================================ */
-
-function viewVignette() {
+// === Screens =================================================================
+function viewVignette(){
   app.innerHTML = `
     <h1>Designer-Verkaufsmesse</h1>
-
     <p class="muted">Stelle dir folgende Situation vor:</p>
-
-    <p>Du befindest dich auf einer <b>exklusiven Verkaufsmesse</b> für hochwertige Designermöbel.
+    <p>Du befindest dich auf einer <b>exklusiven Verkaufsmesse</b> für Designermöbel.
        Ein Besucher möchte sein <b>gebrauchtes Designer-Ledersofa</b> verkaufen.
-       Das Stück ist gepflegt und wird auf der Messe im gehobenen Preisbereich gehandelt.</p>
-
-    <p>Der Verkäufer ist verhandlungsbereit, reagiert auf Gegenangebote
-       und passt seinen Preis Schritt für Schritt an.</p>
-
-    <p class="muted"><b>Hinweis:</b> Die Verhandlung umfasst eine zufällige Anzahl
-       an Runden zwischen 8 und 12.</p>
-
+       Es handelt sich um ein hochwertiges, gepflegtes Stück mit einzigartigem Design.
+       Auf der Messe siehst du viele verschiedene Designer-Sofas, wobei die Preisspanne
+       bei ähnlichen Sofas typischerweise zwischen <b>2.500 € und 10.000 €</b> liegt. Du kommst ins Gespräch und ihr
+       verhandelt über den Verkaufspreis.</p>
+    <p>Auf der nächsten Seite beginnt die Preisverhandlung mit der <b>Verkäuferseite</b>.
+       Du kannst ein <b>Gegenangebot</b> eingeben oder das Angebot annehmen. Achte darauf, dass die Messe
+       gut besucht ist und die Verkäuferseite realistisch bleiben möchte aber auch selbstbewusst in
+       die Verhandlung geht.</p>
+    <p class="muted"><b>Hinweis:</b> Die Verhandlung umfasst maximal ${CONFIG.MAX_RUNDEN} Runden.</p>
     <div class="grid">
       <label class="consent">
-        <input id="consent" type="checkbox">
-        <span>Ich stimme zu, dass meine Eingaben zu <b>forschenden Zwecken</b> gespeichert
-        und anonym analysiert werden dürfen.</span>
+        <input id="consent" type="checkbox" />
+        <span>Ich stimme zu, dass meine Eingaben zu <b>forschenden Zwecken</b> gespeichert und anonym ausgewertet werden dürfen.</span>
       </label>
       <div><button id="startBtn" disabled>Verhandlung starten</button></div>
-    </div>
-  `;
-
-  const c = document.getElementById("consent");
-  const b = document.getElementById("startBtn");
-
-  const sync = () => (b.disabled = !c.checked);
-  c.addEventListener("change", sync);
-  sync();
-
-  b.addEventListener("click", () => {
+    </div>`;
+  const consent = document.getElementById('consent');
+  const startBtn = document.getElementById('startBtn');
+  const sync = () => { startBtn.disabled = !consent.checked; };
+  consent.addEventListener('change', sync); sync();
+  startBtn.addEventListener('click', () => {
+    if (!consent.checked) return;
     state = newState();
     viewNegotiate();
   });
 }
 
-
-/* ============================================================
-   SCREEN: VERHANDLUNG
-============================================================ */
-
-function viewNegotiate(errorMsg = "") {
+function viewThink(next){
+  const delay = randInt(CONFIG.THINK_DELAY_MS_MIN, CONFIG.THINK_DELAY_MS_MAX);
   app.innerHTML = `
-    <h1>Verkaufsverhandlung</h1>
-    <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
-
-    <div class="card" style="padding:16px;background:#fafafa;border-radius:12px;border:1px dashed #888;">
-      <strong>Aktuelles Angebot der Verkäuferseite:</strong> ${eur(state.current_offer)}
-      <br><small>Runde ${state.runde} / ${state.max_runden}</small>
-    </div>
-
-    <label>Dein Gegenangebot:</label>
-    <div class="row">
-      <input id="counter" type="number" min="0" step="1">
-      <button id="sendBtn">Senden</button>
-    </div>
-
-    <button id="acceptBtn" class="ghost">Angebot annehmen</button>
-
-    ${errorMsg ? `<p style="color:red">${errorMsg}</p>` : ""}
-
-    ${renderHistory()}
-  `;
-
-  document.getElementById("sendBtn").onclick = sendCounter;
-  document.getElementById("counter").onkeydown = e => {
-    if (e.key === "Enter") sendCounter();
-  };
-
-  document.getElementById("acceptBtn").onclick = () =>
-    finish(true, state.current_offer);
+    <h1>Die Verkäuferseite überlegt<span class="pulse">&hellip;</span></h1>
+    <p class="muted">Bitte einen Moment Geduld.</p>`;
+  setTimeout(next, delay);
 }
 
-
-/* ============================================================
-   VERLAUFSTABELLE
-============================================================ */
-
-function renderHistory() {
-  if (!state.history.length) return "";
-
+function historyTable(){
+  if (!state.history.length) return '';
+  const rows = state.history.map(h => `
+    <tr>
+      <td>${h.runde}</td>
+      <td>${eur(h.algo_offer)}</td>
+      <td>${h.proband_counter != null && h.proband_counter !== '' ? eur(h.proband_counter) : '-'}</td>
+      <td>${h.accepted ? 'Ja' : 'Nein'}</td>
+    </tr>`).join('');
   return `
     <h2>Verlauf</h2>
     <table>
-      <thead>
-        <tr><th>Runde</th><th>Verkäufer</th><th>Du</th></tr>
-      </thead>
-      <tbody>
-        ${state.history
-          .map(
-            h => `
-          <tr>
-            <td>${h.runde}</td>
-            <td>${eur(h.algo_offer)}</td>
-            <td>${h.proband_counter != null ? eur(h.proband_counter) : "-"}</td>
-          </tr>
-        `
-          )
-          .join("")}
-      </tbody>
-    </table>
-  `;
+      <thead><tr><th>Runde</th><th>Angebot Verkäuferseite</th><th>Gegenangebot</th><th>Angenommen?</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
-/* ============================================================
-   EINGABE DES KÄUFERS
-============================================================ */
 
-function sendCounter() {
-  const value = Number(document.getElementById("counter").value);
+function viewNegotiate(errorMsg){
+  app.innerHTML = `
+    <h1>Verkaufsverhandlung</h1>
+    <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
+    <div class="grid">
+      <div class="card" style="padding:16px;background:#fafafa;border-radius:12px;border:1px dashed var(--accent);">
+        <div><strong>Aktuelles Angebot der Verkäuferseite:</strong> ${eur(state.current_offer)}</div>
+      </div>
+      <label for="counter">Dein Gegenangebot in €</label>
+      <div class="row">
+        <input id="counter" type="number" step="0.01" min="0" required />
+        <button id="sendBtn">Gegenangebot senden</button>
+      </div>
+      <button id="acceptBtn" class="ghost">Angebot annehmen &amp; Verhandlung beenden</button>
+    </div>
+    ${historyTable()}
+    ${state.patternMessage
+      ? `<p style="color:#1f2937;background:#e5e7eb;border:1px solid #d1d5db;padding:8px 10px;border-radius:8px;">
+           <strong>Verkäuferseite:</strong> ${state.patternMessage}
+         </p>`
+      : ``}
+    ${state.warningText
+      ? `<p style="color:#b45309;background:#fffbeb;border:1px solid #fbbf24;padding:8px 10px;border-radius:8px;">
+           <strong>Verwarnung:</strong> ${state.warningText}
+         </p>`
+      : ``}
+    ${errorMsg
+      ? `<p style="color:#b91c1c;"><strong>Fehler:</strong> ${errorMsg}</p>`
+      : ``}
+  `;
 
-  if (!Number.isFinite(value) || value <= 0)
-    return viewNegotiate("Bitte gültige Zahl eingeben.");
+  const inputEl = document.getElementById('counter');
+  const sendBtn = document.getElementById('sendBtn');
 
-  // vor Speicherung prüfen: Abbruch?
-  if (maybeAbort(value)) return;
+  function handleSubmit(){
+    const val = inputEl.value.trim().replace(',','.');
+    const num = Number(val);
+    if (!Number.isFinite(num) || num < 0){
+      viewNegotiate('Bitte eine gültige Zahl ≥ 0 eingeben.');
+      return;
+    }
 
-  const prev = state.current_offer;
+    const prevOffer = state.current_offer;
 
-  state.history.push({
-    runde: state.runde,
-    algo_offer: prev,
-    proband_counter: value
+    // Auto-Accept
+    if (shouldAutoAccept(state.initial_offer, state.min_price, prevOffer, num)) {
+      state.history.push({ runde: state.runde, algo_offer: prevOffer, proband_counter: num, accepted: true });
+      state.accepted = true;
+      state.finished = true;
+      state.finish_reason = 'accepted';
+      state.deal_price = num;
+      sendRow({
+        participant_id: state.participant_id,
+        runde: state.runde,
+        algo_offer: prevOffer,
+        proband_counter: num,
+        accepted: true,
+        finished: true,
+        deal_price: num
+      });
+      viewThink(() => viewFinish(true));
+      return;
+    }
+
+    //… (hier folgt deine eigene Logik)
+    // UI bleibt unverändert
+  }
+
+  sendBtn.addEventListener('click', handleSubmit);
+  inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(); } });
+
+  document.getElementById('acceptBtn').addEventListener('click', () => {
+    state.history.push({ runde: state.runde, algo_offer: state.current_offer, proband_counter: null, accepted:true });
+    state.accepted = true;
+    state.finished = true;
+    state.finish_reason = 'accepted';
+    state.deal_price = state.current_offer;
+    sendRow({
+      participant_id: state.participant_id,
+      runde: state.runde,
+      algo_offer: state.current_offer,
+      proband_counter: '',
+      accepted: true,
+      finished: true,
+      deal_price: state.current_offer
+    });
+    viewThink(() => viewFinish(true));
+  });
+}
+
+function viewDecision(){
+  app.innerHTML = `
+    <h1>Letzte Runde der Verhandlung erreicht.</h1>
+    <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
+    <div class="grid">
+      <div class="card" style="padding:16px;background:#fafafa;border:1px dashed var(--accent);border-radius:12px;">
+        <div><strong>Letztes Angebot der Verkäuferseite:</strong> ${eur(state.current_offer)}</div>
+      </div>
+      <button id="takeBtn">Letztes Angebot annehmen</button>
+      <button id="noBtn" class="ghost">Ohne Einigung beenden</button>
+    </div>
+    ${historyTable()}
+  `;
+
+  document.getElementById('takeBtn').addEventListener('click', () => {
+    state.history.push({ runde: state.runde, algo_offer: state.current_offer, proband_counter: null, accepted:true });
+    state.accepted = true;
+    state.finished = true;
+    state.finish_reason = 'accepted';
+    state.deal_price = state.current_offer;
+    sendRow({
+      participant_id: state.participant_id,
+      runde: state.runde,
+      algo_offer: state.current_offer,
+      proband_counter: '',
+      accepted: true,
+      finished: true,
+      deal_price: state.current_offer
+    });
+    viewThink(() => viewFinish(true));
   });
 
-  const next = computeNextOffer(value);
-  state.current_offer = next;
-
-  if (state.runde >= state.max_runden)
-    return viewDecision();
-
-  state.runde++;
-  viewNegotiate();
+  document.getElementById('noBtn').addEventListener('click', () => {
+    state.history.push({ runde: state.runde, algo_offer: state.current_offer, proband_counter: null, accepted:false });
+    state.accepted = false;
+    state.finished = true;
+    state.finish_reason = 'max_rounds';
+    sendRow({
+      participant_id: state.participant_id,
+      runde: state.runde,
+      algo_offer: state.current_offer,
+      proband_counter: '',
+      accepted: false,
+      finished: true
+    });
+    viewThink(() => viewFinish(false));
+  });
 }
 
+function viewFinish(accepted){
+  var dealPrice = state.deal_price != null ? state.deal_price : state.current_offer;
 
-/* ============================================================
-   SCREEN: LETZTE RUNDE
-============================================================ */
+  var resultText;
+  if (accepted) {
+    resultText =
+      'Annahme in Runde ' + state.runde + ' bei ' + eur(dealPrice) +
+      '. Letztes Angebot der Verkäuferseite: ' + eur(state.current_offer) + '.';
+  } else if (state.finish_reason === 'warnings') {
+    resultText =
+      'Verhandlung aufgrund wiederholt unakzeptabler Angebote abgebrochen. ' +
+      'Letztes Angebot der Verkäuferseite: ' + eur(state.current_offer) + '.';
+  } else {
+    resultText =
+      'Maximale Rundenzahl erreicht. Letztes Angebot der Verkäuferseite: ' +
+      eur(state.current_offer) + '.';
+  }
 
-function viewDecision() {
   app.innerHTML = `
-    <h1>Letzte Runde</h1>
-
-    <div class="card">
-      <strong>Letztes Angebot:</strong> ${eur(state.current_offer)}
+    <h1>Verhandlung abgeschlossen</h1>
+    <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
+    <div class="grid">
+      <div class="card" style="padding:16px;background:#fafafa;border-radius:12px;border:1px dashed var(--accent);">
+        <div><strong>Ergebnis:</strong> ${resultText}</div>
+      </div>
+      <button id="restartBtn">Neue Verhandlung starten</button>
     </div>
-
-    <button id="acceptBtn">Annehmen</button>
-    <button id="declineBtn" class="ghost">Ablehnen</button>
-
-    ${renderHistory()}
+    ${historyTable()}
   `;
-
-  document.getElementById("acceptBtn").onclick = () =>
-    finish(true, state.current_offer);
-  document.getElementById("declineBtn").onclick = () =>
-    finish(false, null);
-}
-
-
-/* ============================================================
-   FINALE SEITE
-============================================================ */
-
-function finish(accepted, deal) {
-  state.finished = true;
-  state.accepted = accepted;
-  state.deal_price = deal;
-
-  app.innerHTML = `
-    <h1>Verhandlung beendet</h1>
-
-    <p>${
-      accepted
-        ? `Einigung erzielt bei <b>${eur(deal)}</b>.`
-        : "Keine Einigung erzielt."
-    }</p>
-
-    ${renderHistory()}
-
-    <button id="restartBtn">Neue Verhandlung</button>
-  `;
-
-  document.getElementById("restartBtn").onclick = () => {
+  document.getElementById('restartBtn').addEventListener('click', () => {
     state = newState();
     viewVignette();
-  };
+  });
 }
 
-
-/* ============================================================
-   START
-============================================================ */
-
+// === Start ===================================================================
 viewVignette();
