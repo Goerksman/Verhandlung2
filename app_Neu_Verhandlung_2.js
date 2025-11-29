@@ -280,7 +280,6 @@ function viewNegotiate(errorMsg = "") {
 ============================================================ */
 
 function handleSubmit() {
-  const inputEl = document.getElementById("counter");
   const val = inputEl.value.trim().replace(",", ".");
   const num = Number(val);
 
@@ -410,3 +409,4 @@ function finish(accepted, deal) {
 ============================================================ */
 
 viewVignette();
+
