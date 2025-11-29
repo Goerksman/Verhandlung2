@@ -11,7 +11,7 @@ const GOOGLE_SHEETS_CSV_URL =
    ============================================================ */
 
 async function loadSheetData() {
-    const csv = await fetch(GOOGLE_SHEETS_CSV_URL).then(r => r.text());
+    const csv = await fetch(https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3s5qCrJ2PDoIjbIP9YvNtyUszeiPmko9OGT_saIHe9LneN80kXpSzHTlqGXGdgW93ta2kNvjtl_4k/pubhtml).then(r => r.text());
     const rows = csv.trim().split("\n").map(r => r.split(","));
     const headers = rows[0].map(h => h.trim());
 
@@ -168,6 +168,7 @@ function sendOffer() {
         log.innerHTML += `<br><br><b>🎉 Auto-Accept! Einigung bei ${userOffer} €.</b>`;
     }
 }
+
 
 
 
