@@ -240,39 +240,74 @@ function renderHistory() {
    SCREEN: VERHANDLUNG
 ============================================================ */
 
-function viewNegotiate(errorMsg = "") {
+function viewNegotiate(errorMsg){
   app.innerHTML = `
     <h1>Verkaufsverhandlung</h1>
     <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
-
-    <div class="card" style="padding:16px;background:#fafafa;border:1px dashed #ccc;border-radius:12px;">
-      <strong>Aktuelles Angebot der Verkäuferseite:</strong> ${eur(state.current_offer)}
-      <br><small>Runde ${state.runde} / ${state.max_runden}</small>
+    <div class="grid">
+      <div class="card" style="padding:16px;background:#fafafa;border-radius:12px;border:1px dashed var(--accent);">
+        <div><strong>Aktuelles Angebot der Verkäuferseite:</strong> ${eur(state.current_offer)}</div>
+      </div>
+      <label for="counter">Dein Gegenangebot in €</label>
+      <div class="row">
+        <input id="counter" type="number" step="0.01" min="0" required />
+        <button id="sendBtn">Gegenangebot senden</button>
+      </div>
+      <button id="acceptBtn" class="ghost">Angebot annehmen &amp; Verhandlung beenden</button>
     </div>
-
-    <label for="counter">Dein Gegenangebot in €</label>
-    <div class="row">
-      <input id="counter" type="number" step="1" min="0">
-      <button id="sendBtn">Gegenangebot senden</button>
-    </div>
-
-    <button id="acceptBtn" class="ghost">Angebot annehmen & Verhandlung beenden</button>
-
-    ${state.patternMessage ? `<p>${state.patternMessage}</p>` : ""}
-    ${state.warningText ? `<p style="color:#b91c1c">${state.warningText}</p>` : ""}
-    ${errorMsg ? `<p style="color:red">${errorMsg}</p>` : ""}
-
-    ${renderHistory()}
+    ${historyTable()}
+    ${state.patternMessage
+      ? `<p style="color:#1f2937;background:#e5e7eb;border:1px solid #d1d5db;padding:8px 10px;border-radius:8px;">
+           <strong>Verkäuferseite:</strong> ${state.patternMessage}
+         </p>`
+      : ``}
+    ${state.warningText
+      ? `<p style="color:#b45309;background:#fffbeb;border:1px solid #fbbf24;padding:8px 10px;border-radius:8px;">
+           <strong>Verwarnung:</strong> ${state.warningText}
+         </p>`
+      : ``}
+    ${errorMsg
+      ? `<p style="color:#b91c1c;"><strong>Fehler:</strong> ${errorMsg}</p>`
+      : ``}
   `;
 
-  document.getElementById("sendBtn").onclick = handleSubmit;
-  document.getElementById("counter").onkeydown = e => {
-    if (e.key === "Enter") handleSubmit();
-  };
+  const inputEl = document.getElementById('counter');
+  const sendBtn = document.getElementById('sendBtn');
 
-  document.getElementById("acceptBtn").onclick = () =>
-    finish(true, state.current_offer);
+  function handleSubmit(){
+    const val = inputEl.value.trim().replace(',','.');
+    const num = Number(val);
+    if (!Number.isFinite(num) || num < 0){
+      viewNegotiate('Bitte eine gültige Zahl ≥ 0 eingeben.');
+      return;
+    }
+
+    const prevOffer = state.current_offer;
+
+    // Auto-Accept (inkl. 5%-Regel)
+    if (shouldAutoAccept(state.initial_offer, state.min_price, prevOffer, num)) {
+      ...
+    }
+
+    // Unakzeptable Angebote ...
+    if (num < UNACCEPTABLE_LIMIT) {
+      ...
+    }
+
+    // akzeptable Angebote ...
+    const prev = state.current_offer;
+    const next = computeNextOffer(prev, state.min_price, num, state.runde, state.last_concession);
+    ...
+  }
+
+  sendBtn.addEventListener('click', handleSubmit);
+  inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(); } });
+
+  document.getElementById('acceptBtn').addEventListener('click', () => {
+    ...
+  });
 }
+
 
 
 /* ============================================================
@@ -409,4 +444,5 @@ function finish(accepted, deal) {
 ============================================================ */
 
 viewVignette();
+
 
