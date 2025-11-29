@@ -495,6 +495,3 @@ function viewFinish(accepted){
 
 // === Start ===================================================================
 viewVignette();
-
-
-
