@@ -1,7 +1,7 @@
 
-// Wichtig: Google Sheet → Datei → Im Web veröffentlichen → CSV wählen!
 const GOOGLE_SHEETS_CSV_URL =
-    https://docs.google.com/spreadsheets/d/1993f7-GVNOEetat7rIFJ61WZN8zaqPGRb0ExCwWpjnM/edit?gid=1523776226#gid=1523776226; // 
+  https://docs.google.com/spreadsheets/d/1993f7-GVNOEetat7rIFJ61WZN8zaqPGRb0ExCwWpjnM/edit?gid=1523776226#gid=1523776226; // 
+ 
 
 
 
@@ -188,5 +188,6 @@ async function runExample(vehicleID) {
 // STARTE TESTVERHANDLUNG (ID = 1 aus Google Sheets)
 // ============================================================
 runExample(1);
+
 
 
