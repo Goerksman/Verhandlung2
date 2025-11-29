@@ -52,8 +52,9 @@
   </script>
 
   <!-- Google-Sheets-Eintrag -->
-  <script>
-  const APP_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3s5qCrJ2PDoIjbIP9YvNtyUszeiPmko9OGT_saIHe9LneN80kXpSzHTlqGXGdgW93ta2kNvjtl_4k/pub?output=xlsx';
+<script>
+  const APP_URL = 'https://script.google.com/macros/s/AKfycbx1234567890abcdef/exec';
+
   window.sendRow = function(row){
     const body = new URLSearchParams({
       participant_id: row.participant_id,
@@ -64,15 +65,18 @@
       finished:       row.finished ? '1' : '0',
       deal_price:     row.deal_price ?? ''
     });
-    fetch(APP_URL, { method:'POST', body, mode:'no-cors' }).catch(()=>{});
+
+    fetch(APP_URL, {
+      method: 'POST',
+      body: body,
+      mode: 'no-cors'
+    }).catch(()=>{});
   };
 </script>
 
-  <!-- Verhandlungslogik -->
-  <script type="module" src="./app_Neu_Verhandlung_2.js"></script>
-</body>
-</html>
-  
+<!-- Verhandlungslogik -->
+<script type="module" src="./app_Neu_Verhandlung_2.js"></script>
+
 
 
 
