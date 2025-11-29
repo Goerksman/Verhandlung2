@@ -1,9 +1,7 @@
-/* ============================================================
-      GOOGLE-SHEETS CSV LINK (FUNKTIONIERT IM BROWSER!)
-   ============================================================ */
+
 
 const GOOGLE_SHEETS_CSV_URL =
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3s5qCrJ2PDoIjbIP9YvNtyUszeiPmko9OGT_saIHe9LneN80kXpSzHTlqGXGdgW93ta2kNvjtl_4k/pub?output=ods";
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3s5qCrJ2PDoIjbIP9YvNtyUszeiPmko9OGT_saIHe9LneN80kXpSzHTlqGXGdgW93ta2kNvjtl_4k/pub?output=csv";
 
 
 /* ============================================================
@@ -147,5 +145,6 @@ function sendOffer() {
         log.innerHTML += `<br><br><b>⛔ Maximale Runden erreicht.</b>`;
     }
 }
+
 
 
