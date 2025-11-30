@@ -22,7 +22,7 @@ const app = document.getElementById("app");
 
 function newState() {
   const startpreis = 5500;
-  const schmerzgrenze = 4000;
+  const schmerzgrenze = 4000;  // angepasst
 
   return {
     participant_id:
@@ -104,6 +104,8 @@ function abortProbability(userOffer) {
   const last = state.history[state.history.length - 1];
   if (last && last.proband_counter !== null) {
     const diff = Math.abs(userOffer - last.proband_counter);
+
+    // Anpassung: jetzt diff ≤ 100 statt ≤ 20
     if (diff <= 100) chance += randInt(5, 20);
   }
 
@@ -168,11 +170,8 @@ function viewVignette() {
       <h1>Designer-Verkaufsmesse</h1>
       <p class="muted">Stelle dir folgende Situation vor:</p>
 
-      <p>Sie sind Besucher der exklusiven LivinStyle-Messe Frankfurt für Designermöbel. Nach langer, intensiver Suche haben Sie Ihr Wunschobjekt entdeckt:
-      eine hochwertige, gepflegte Ledercouch mit einzigartigem Design, die Sie unbedingt erwerben möchten. Mehrere Besucher zeigen bereits Interesse und die Messe schließt in absehbarer Zeit, 
-      sodass ein zeitnaher Abschluss sinnvoll ist. Die Verhandlung umfasst maximal 12 Runden, wobei der Verhandlungspartner die Verhandlung bei unverschämten Angeboten sofort abbricht. 
-      Auf der nächsten Seite beginnt die Preisverhandlung mit der Verkäuferseite. Sie haben die Möglichkeit, ein Erstangebot abzugeben, weitere Angebote abzugeben sowie Angebote des Gegenübers anzunehmen.
-
+      <p>Ein Besucher möchte sein <b>Designer-Ledersofa</b> verkaufen.
+      Vergleichbare Sofas kosten <b>2.500–10.000 €</b>.</p>
 
       <p>Der Verkäufer reagiert auf deine Angebote, hat aber eine eigene Untergrenze.</p>
 
@@ -258,7 +257,7 @@ function logRound({ runde, algo, counter, accepted, finished, deal }) {
 
 
 /* ============================================================
-   SCREEN: VERHANDLUNG  (mit Farbskala)
+   SCREEN: VERHANDLUNG (mit Farbskala)
 ============================================================ */
 
 function viewNegotiate(errorMsg = "") {
@@ -270,9 +269,9 @@ function viewNegotiate(errorMsg = "") {
 
   const abortChance = abortProbability(lastCounter);
 
-  let color = "#16a34a"; // grün
-  if (abortChance > 50) color = "#ea580c"; // orange
-  else if (abortChance > 25) color = "#eab308"; // gelb
+  let color = "#16a34a";
+  if (abortChance > 50) color = "#ea580c";
+  else if (abortChance > 25) color = "#eab308";
 
   app.innerHTML = `
     <div class="card">
@@ -321,6 +320,31 @@ function viewNegotiate(errorMsg = "") {
 
 
 /* ============================================================
+   INTELLIGENTE AUTO-ACCEPT LOGIK
+============================================================ */
+
+function acceptAndFinish(num, prevOffer) {
+  state.history.push({
+    runde: state.runde,
+    algo_offer: prevOffer,
+    proband_counter: num,
+    accepted: true
+  });
+
+  logRound({
+    runde: state.runde,
+    algo: prevOffer,
+    counter: num,
+    accepted: true,
+    finished: true,
+    deal: num
+  });
+
+  finish(true, num);
+}
+
+
+/* ============================================================
    HANDLE SUBMIT
 ============================================================ */
 
@@ -334,28 +358,34 @@ function handleSubmit(valRaw) {
   }
 
   const prevOffer = state.current_offer;
+  const rest = state.max_runden - state.runde;
 
-  if (num >= state.min_price) {
+  /* ======================================================
+     INTELLIGENTER AUTO-ACCEPT (NEUE LOGIK)
+  ====================================================== */
 
-    state.history.push({
-      runde: state.runde,
-      algo_offer: prevOffer,
-      proband_counter: num,
-      accepted: true
-    });
-
-    logRound({
-      runde: state.runde,
-      algo: prevOffer,
-      counter: num,
-      accepted: true,
-      finished: true,
-      deal: num
-    });
-
-    finish(true, num);
+  // Sehr gutes Angebot -> sofort akzeptieren
+  if (num >= 5000) {
+    acceptAndFinish(num, prevOffer);
     return;
   }
+
+  // Gutes Angebot -> akzeptieren, wenn Verhandlung dem Ende zugeht
+  if (num >= 4500 && rest <= 3) {
+    acceptAndFinish(num, prevOffer);
+    return;
+  }
+
+  // Angebot >= Schmerzgrenze -> akzeptieren NUR in letzter Runde
+  if (num >= state.min_price && rest <= 1) {
+    acceptAndFinish(num, prevOffer);
+    return;
+  }
+
+
+  /* ======================================================
+     NORMALE VERHANDLUNGSLOGIK
+  ====================================================== */
 
   if (maybeAbort(num)) return;
 
@@ -388,6 +418,8 @@ function handleSubmit(valRaw) {
     return;
   }
 
+
+  // normale Runde
   state.warningText = "";
 
   state.history.push({
@@ -487,11 +519,3 @@ function finish(accepted, deal) {
 ============================================================ */
 
 viewVignette();
-
-
-
-
-
-
-
-
