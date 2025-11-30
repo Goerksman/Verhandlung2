@@ -170,7 +170,7 @@ function viewVignette() {
 
       <p>Sie sind Besucher der exklusiven LivinStyle-Messe Frankfurt für Designermöbel. Nach langer, intensiver Suche haben Sie Ihr Wunschobjekt entdeckt:
       eine hochwertige, gepflegte Ledercouch mit einzigartigem Design, die Sie unbedingt erwerben möchten. Mehrere Besucher zeigen bereits Interesse und die Messe schließt in absehbarer Zeit, 
-      sodass ein zeitnaher Abschluss sinnvoll ist. Die Verhandlung umfasst maximal 8 Runden, wobei der Verhandlungspartner die Verhandlung bei unverschämten Angeboten sofort abbricht. 
+      sodass ein zeitnaher Abschluss sinnvoll ist. Die Verhandlung umfasst maximal 12 Runden, wobei der Verhandlungspartner die Verhandlung bei unverschämten Angeboten sofort abbricht. 
       Auf der nächsten Seite beginnt die Preisverhandlung mit der Verkäuferseite. Sie haben die Möglichkeit, ein Erstangebot abzugeben, weitere Angebote abzugeben sowie Angebote des Gegenübers anzunehmen.
 
 
@@ -487,6 +487,7 @@ function finish(accepted, deal) {
 ============================================================ */
 
 viewVignette();
+
 
 
 
