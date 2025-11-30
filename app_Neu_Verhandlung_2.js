@@ -13,14 +13,16 @@ const eur = n =>
     currency: "EUR"
   }).format(n);
 
+const app = document.getElementById("app");
+
 
 /* ============================================================
-   ZUSTAND – Fester Startpreis & Schmerzgrenze
+   ZUSTAND – Startpreis & Schmerzgrenze
 ============================================================ */
 
 function newState() {
   const startpreis = 5500;
-  const schmerzgrenze = 4500;
+  const schmerzgrenze = 3500;  // NEU: wie gewünscht!
 
   return {
     participant_id:
@@ -105,12 +107,10 @@ function computeNextOffer(userOffer) {
 function abortProbability(userOffer) {
   let chance = 0;
 
-  // Unter 3000 €
   if (userOffer < 3000) {
     chance += randInt(10, 30);
   }
 
-  // Minimaler Schritt (≤ 20 €)
   const last = state.history[state.history.length - 1];
   if (last && last.proband_counter !== null) {
     const diff = Math.abs(userOffer - last.proband_counter);
@@ -119,7 +119,6 @@ function abortProbability(userOffer) {
     }
   }
 
-  // Spätere Runden
   chance += state.runde * 2;
 
   if (chance > 75) chance = 75;
@@ -149,7 +148,6 @@ function maybeAbort(userOffer) {
 function viewAbort(chance) {
   app.innerHTML = `
     <h1>Verhandlung abgebrochen</h1>
-
     <p>Die Verkäuferseite hat die Verhandlung vorzeitig beendet.</p>
     <p class="muted">Abbruchwahrscheinlichkeit: ${chance}%</p>
 
@@ -172,25 +170,23 @@ function viewAbort(chance) {
 function viewVignette() {
   app.innerHTML = `
     <h1>Designer-Verkaufsmesse</h1>
+
     <p class="muted">Stelle dir folgende Situation vor:</p>
 
     <p>Du befindest dich auf einer <b>exklusiven Verkaufsmesse</b> für Designermöbel.
        Ein Besucher möchte sein <b>gebrauchtes Designer-Ledersofa</b> verkaufen.
-       Es handelt sich um ein hochwertiges, gepflegtes Stück mit einzigartigem Design.
        Vergleichbare Sofas liegen zwischen <b>2.500 € und 10.000 €</b>.</p>
 
-    <p>Der Verkäufer reagiert auf deine Angebote und passt seinen Preis an —
-       bleibt aber selbstbewusst und verfolgt seine eigene Preisuntergrenze.</p>
+    <p>Der Verkäufer passt seinen Preis an — verfolgt aber eine eigene Preisuntergrenze.</p>
 
     <p class="muted"><b>Hinweis:</b> Die Verhandlung dauert zufällig 8–12 Runden.</p>
 
-    <div class="grid">
-      <label class="consent">
-        <input id="consent" type="checkbox" />
-        <span>Ich stimme der anonymen Datenspeicherung zu.</span>
-      </label>
-      <div><button id="startBtn" disabled>Verhandlung starten</button></div>
-    </div>
+    <label class="consent">
+      <input id="consent" type="checkbox" />
+      <span>Ich stimme der anonymen Datenspeicherung zu.</span>
+    </label>
+
+    <button id="startBtn" disabled>Verhandlung starten</button>
   `;
 
   const c = document.getElementById("consent");
@@ -237,85 +233,61 @@ function renderHistory() {
 
 
 /* ============================================================
-   SCREEN: VERHANDLUNG
+   Übergangsbild
 ============================================================ */
 
-function viewNegotiate(errorMsg){
+function viewThink(next) {
   app.innerHTML = `
-    <h1>Verkaufsverhandlung</h1>
-    <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
-    <div class="grid">
-      <div class="card" style="padding:16px;background:#fafafa;border-radius:12px;border:1px dashed var(--accent);">
-        <div><strong>Aktuelles Angebot der Verkäuferseite:</strong> ${eur(state.current_offer)}</div>
-      </div>
-      <label for="counter">Dein Gegenangebot in €</label>
-      <div class="row">
-        <input id="counter" type="number" step="0.01" min="0" required />
-        <button id="sendBtn">Gegenangebot senden</button>
-      </div>
-      <button id="acceptBtn" class="ghost">Angebot annehmen &amp; Verhandlung beenden</button>
-    </div>
-    ${historyTable()}
-    ${state.patternMessage
-      ? `<p style="color:#1f2937;background:#e5e7eb;border:1px solid #d1d5db;padding:8px 10px;border-radius:8px;">
-           <strong>Verkäuferseite:</strong> ${state.patternMessage}
-         </p>`
-      : ``}
-    ${state.warningText
-      ? `<p style="color:#b45309;background:#fffbeb;border:1px solid #fbbf24;padding:8px 10px;border-radius:8px;">
-           <strong>Verwarnung:</strong> ${state.warningText}
-         </p>`
-      : ``}
-    ${errorMsg
-      ? `<p style="color:#b91c1c;"><strong>Fehler:</strong> ${errorMsg}</p>`
-      : ``}
+    <h1>Die Verkäuferseite überlegt...</h1>
   `;
-
-  const inputEl = document.getElementById('counter');
-  const sendBtn = document.getElementById('sendBtn');
-
-  function handleSubmit(){
-    const val = inputEl.value.trim().replace(',','.');
-    const num = Number(val);
-    if (!Number.isFinite(num) || num < 0){
-      viewNegotiate('Bitte eine gültige Zahl ≥ 0 eingeben.');
-      return;
-    }
-
-    const prevOffer = state.current_offer;
-
-    // Auto-Accept (inkl. 5%-Regel)
-    if (shouldAutoAccept(state.initial_offer, state.min_price, prevOffer, num)) {
-      ...
-    }
-
-    // Unakzeptable Angebote ...
-    if (num < UNACCEPTABLE_LIMIT) {
-      ...
-    }
-
-    // akzeptable Angebote ...
-    const prev = state.current_offer;
-    const next = computeNextOffer(prev, state.min_price, num, state.runde, state.last_concession);
-    ...
-  }
-
-  sendBtn.addEventListener('click', handleSubmit);
-  inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(); } });
-
-  document.getElementById('acceptBtn').addEventListener('click', () => {
-    ...
-  });
+  setTimeout(next, randInt(600, 1100));
 }
 
 
-
 /* ============================================================
-   HANDLE SUBMIT – NEUE VERSION
+   SCREEN: VERHANDLUNG
 ============================================================ */
 
-function handleSubmit() {
-  const val = inputEl.value.trim().replace(",", ".");
+function viewNegotiate(errorMsg = "") {
+  app.innerHTML = `
+    <h1>Verkaufsverhandlung</h1>
+    <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
+
+    <div class="card">
+      <strong>Aktuelles Angebot:</strong> ${eur(state.current_offer)}
+    </div>
+
+    <label for="counter">Dein Gegenangebot (€)</label>
+    <input id="counter" type="number" step="0.01" min="0" />
+
+    <button id="sendBtn">Gegenangebot senden</button>
+    <button id="acceptBtn" class="ghost">Angebot annehmen</button>
+
+    ${renderHistory()}
+    ${state.warningText ? `<p class="warning">${state.warningText}</p>` : ""}
+    ${errorMsg ? `<p class="error">${errorMsg}</p>` : ""}
+  `;
+
+  const inputEl = document.getElementById("counter");
+  const sendBtn = document.getElementById("sendBtn");
+
+  sendBtn.onclick = () => handleSubmit(inputEl.value);
+  inputEl.onkeydown = e => {
+    if (e.key === "Enter") handleSubmit(inputEl.value);
+  };
+
+  document.getElementById("acceptBtn").onclick = () => {
+    finish(true, state.current_offer);
+  };
+}
+
+
+/* ============================================================
+   HANDLE SUBMIT — final
+============================================================ */
+
+function handleSubmit(valRaw) {
+  const val = valRaw.trim().replace(",", ".");
   const num = Number(val);
 
   if (!Number.isFinite(num) || num <= 0) {
@@ -325,23 +297,26 @@ function handleSubmit() {
 
   const prevOffer = state.current_offer;
 
-  // AUTO-ACCEPT
-  if (num >= prevOffer) {
-    state.history.push({ runde: state.runde, algo_offer: prevOffer, proband_counter: num, accepted: true });
-    state.accepted = true;
-    state.finished = true;
-    state.deal_price = num;
-    viewThink(() => viewFinish(true));
+  /* ------------------------------------------
+     AUTO-ACCEPT: Nutzerangebot ≥ Schmerzgrenze
+     ------------------------------------------ */
+  if (num >= state.min_price) {
+    state.history.push({
+      runde: state.runde,
+      algo_offer: prevOffer,
+      proband_counter: num,
+      accepted: true
+    });
+    finish(true, num);
     return;
   }
 
-  // ABBRUCH CHANCE
+  // ABBRUCH WAHRSCHEINLICHKEIT
   if (maybeAbort(num)) return;
 
-  // UNAKZEPTABEL
+  // ZU NIEDRIG (< 2250 → Verwarnung)
   if (num < 2250) {
     state.warningCount++;
-
     state.warningText =
       "Ihr Angebot liegt deutlich unter der akzeptablen Preiszone.";
 
@@ -352,8 +327,7 @@ function handleSubmit() {
     });
 
     if (state.warningCount >= 2) {
-      state.finished = true;
-      viewThink(() => viewFinish(false));
+      finish(false, null);
       return;
     }
 
@@ -362,7 +336,7 @@ function handleSubmit() {
     return;
   }
 
-  // NORMAL
+  // OK
   state.warningText = "";
 
   state.history.push({
@@ -423,9 +397,8 @@ function finish(accepted, deal) {
     <h1>Verhandlung beendet</h1>
 
     <p>${accepted
-        ? `Einigung erzielt bei <b>${eur(deal)}</b>`
-        : "Keine Einigung erzielt."}
-    </p>
+      ? `Einigung erzielt bei <b>${eur(deal)}</b>`
+      : "Keine Einigung erzielt."}</p>
 
     ${renderHistory()}
 
@@ -444,5 +417,3 @@ function finish(accepted, deal) {
 ============================================================ */
 
 viewVignette();
-
-
