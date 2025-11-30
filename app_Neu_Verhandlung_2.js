@@ -118,7 +118,6 @@ function maybeAbort(userOffer) {
 
   if (roll <= chance) {
 
-    // 🟢 LOGGING – ABBRUCH
     logRound({
       runde: state.runde,
       algo: state.current_offer,
@@ -237,7 +236,7 @@ function viewThink(next) {
 
 
 /* ============================================================
-   ROUND LOGGING (NEU)
+   ROUND LOGGING
 ============================================================ */
 
 function logRound({ runde, algo, counter, accepted, finished, deal }) {
@@ -256,10 +255,22 @@ function logRound({ runde, algo, counter, accepted, finished, deal }) {
 
 
 /* ============================================================
-   SCREEN: VERHANDLUNG
+   SCREEN: VERHANDLUNG  (mit Farbskala)
 ============================================================ */
 
 function viewNegotiate(errorMsg = "") {
+
+  const lastCounter =
+    state.history.length
+      ? state.history[state.history.length - 1].proband_counter
+      : 0;
+
+  const abortChance = abortProbability(lastCounter);
+
+  let color = "#16a34a"; // grün
+  if (abortChance > 50) color = "#ea580c"; // orange
+  else if (abortChance > 25) color = "#eab308"; // gelb
+
   app.innerHTML = `
     <div class="card">
       <h1>Verkaufsverhandlung</h1>
@@ -267,6 +278,17 @@ function viewNegotiate(errorMsg = "") {
 
       <div class="card" style="margin-bottom:12px;">
         <strong>Aktuelles Angebot:</strong> ${eur(state.current_offer)}
+      </div>
+
+      <div style="
+        background: ${color}22; 
+        border-left: 6px solid ${color};
+        padding: 8px 12px;
+        margin-bottom: 10px;
+        border-radius: 6px;
+      ">
+        <b style="color:${color};">Abbruchwahrscheinlichkeit:</b>
+        <span style="color:${color}; font-weight:600;">${abortChance}%</span>
       </div>
 
       <label>Dein Gegenangebot (€)</label>
@@ -277,14 +299,18 @@ function viewNegotiate(errorMsg = "") {
 
       ${renderHistory()}
       ${state.warningText ? `<p class="muted">${state.warningText}</p>` : ""}
-      ${errorMsg ? `<p class="muted">${errorMsg}</p>` : ""}
+      ${errorMsg ? `<p class="muted" style="color:red">${errorMsg}</p>` : ""}
     </div>
   `;
 
   const inputEl = document.getElementById("counter");
 
-  document.getElementById("sendBtn").onclick = () => handleSubmit(inputEl.value);
-  inputEl.onkeydown = e => { if (e.key === "Enter") handleSubmit(inputEl.value); };
+  document.getElementById("sendBtn").onclick = () =>
+    handleSubmit(inputEl.value);
+
+  inputEl.onkeydown = e => {
+    if (e.key === "Enter") handleSubmit(inputEl.value);
+  };
 
   document.getElementById("acceptBtn").onclick = () =>
     finish(true, state.current_offer);
@@ -306,8 +332,8 @@ function handleSubmit(valRaw) {
 
   const prevOffer = state.current_offer;
 
-  /* === AUTO-ACCEPT (>= 3500 €) === */
   if (num >= state.min_price) {
+
     state.history.push({
       runde: state.runde,
       algo_offer: prevOffer,
@@ -315,7 +341,6 @@ function handleSubmit(valRaw) {
       accepted: true
     });
 
-    // 🟢 LOGGING – AUTO ACCEPT
     logRound({
       runde: state.runde,
       algo: prevOffer,
@@ -329,10 +354,8 @@ function handleSubmit(valRaw) {
     return;
   }
 
-  // === Abbruchchance prüfen ===
   if (maybeAbort(num)) return;
 
-  /* === VERWARNUNG < 2250 === */
   if (num < 2250) {
     state.warningCount++;
     state.warningText = "Ihr Angebot liegt deutlich unter der akzeptablen Preiszone.";
@@ -343,7 +366,6 @@ function handleSubmit(valRaw) {
       proband_counter: num
     });
 
-    // 🟢 LOGGING – Verwarnung
     logRound({
       runde: state.runde,
       algo: prevOffer,
@@ -363,7 +385,6 @@ function handleSubmit(valRaw) {
     return;
   }
 
-  /* === NORMALE RUNDE === */
   state.warningText = "";
 
   state.history.push({
@@ -372,7 +393,6 @@ function handleSubmit(valRaw) {
     proband_counter: num
   });
 
-  // 🟢 LOGGING – normale Runde
   logRound({
     runde: state.runde,
     algo: prevOffer,
@@ -385,7 +405,6 @@ function handleSubmit(valRaw) {
   const next = computeNextOffer(num);
   state.current_offer = next;
 
-  /* === letzte Runde erreicht? === */
   if (state.runde >= state.max_runden) {
     viewThink(() => viewDecision());
     return;
@@ -433,7 +452,6 @@ function finish(accepted, deal) {
   state.finished = true;
   state.deal_price = deal;
 
-  // 🟢 LOGGING – FINAL
   logRound({
     runde: state.runde,
     algo: state.current_offer,
