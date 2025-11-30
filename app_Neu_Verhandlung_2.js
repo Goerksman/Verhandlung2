@@ -168,8 +168,11 @@ function viewVignette() {
       <h1>Designer-Verkaufsmesse</h1>
       <p class="muted">Stelle dir folgende Situation vor:</p>
 
-      <p>Ein Besucher möchte sein <b>Designer-Ledersofa</b> verkaufen.
-      Vergleichbare Sofas kosten <b>2.500–10.000 €</b>.</p>
+      <p>Sie sind Besucher der exklusiven LivinStyle-Messe Frankfurt für Designermöbel. Nach langer, intensiver Suche haben Sie Ihr Wunschobjekt entdeckt:
+      eine hochwertige, gepflegte Ledercouch mit einzigartigem Design, die Sie unbedingt erwerben möchten. Mehrere Besucher zeigen bereits Interesse und die Messe schließt in absehbarer Zeit, 
+      sodass ein zeitnaher Abschluss sinnvoll ist. Die Verhandlung umfasst maximal 8 Runden, wobei der Verhandlungspartner die Verhandlung bei unverschämten Angeboten sofort abbricht. 
+      Auf der nächsten Seite beginnt die Preisverhandlung mit der Verkäuferseite. Sie haben die Möglichkeit, ein Erstangebot abzugeben, weitere Angebote abzugeben sowie Angebote des Gegenübers anzunehmen.
+
 
       <p>Der Verkäufer reagiert auf deine Angebote, hat aber eine eigene Untergrenze.</p>
 
@@ -484,6 +487,7 @@ function finish(accepted, deal) {
 ============================================================ */
 
 viewVignette();
+
 
 
 
