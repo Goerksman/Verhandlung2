@@ -104,7 +104,7 @@ function abortProbability(userOffer) {
   const last = state.history[state.history.length - 1];
   if (last && last.proband_counter !== null) {
     const diff = Math.abs(userOffer - last.proband_counter);
-    if (diff <= 20) chance += randInt(5, 20);
+    if (diff <= 100) chance += randInt(5, 20);
   }
 
   chance += state.runde * 2;
@@ -484,6 +484,7 @@ function finish(accepted, deal) {
 ============================================================ */
 
 viewVignette();
+
 
 
 
