@@ -22,7 +22,7 @@ const app = document.getElementById("app");
 
 function newState() {
   const startpreis = 5500;
-  const schmerzgrenze = 3500;
+  const schmerzgrenze = 4000;
 
   return {
     participant_id:
@@ -487,6 +487,7 @@ function finish(accepted, deal) {
 ============================================================ */
 
 viewVignette();
+
 
 
 
