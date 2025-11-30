@@ -117,6 +117,17 @@ function maybeAbort(userOffer) {
   const roll = randInt(1, 100);
 
   if (roll <= chance) {
+
+    // 🟢 LOGGING – ABBRUCH
+    logRound({
+      runde: state.runde,
+      algo: state.current_offer,
+      counter: userOffer,
+      accepted: false,
+      finished: true,
+      deal: ""
+    });
+
     state.finished = true;
     state.accepted = false;
     state.deal_price = null;
@@ -226,6 +237,25 @@ function viewThink(next) {
 
 
 /* ============================================================
+   ROUND LOGGING (NEU)
+============================================================ */
+
+function logRound({ runde, algo, counter, accepted, finished, deal }) {
+  if (window.sendRow) {
+    window.sendRow({
+      participant_id: state.participant_id,
+      runde,
+      algo_offer: algo,
+      proband_counter: counter,
+      accepted,
+      finished,
+      deal_price: deal
+    });
+  }
+}
+
+
+/* ============================================================
    SCREEN: VERHANDLUNG
 ============================================================ */
 
@@ -276,7 +306,7 @@ function handleSubmit(valRaw) {
 
   const prevOffer = state.current_offer;
 
-  // AUTO-ACCEPT ab 3500 €
+  /* === AUTO-ACCEPT (>= 3500 €) === */
   if (num >= state.min_price) {
     state.history.push({
       runde: state.runde,
@@ -284,14 +314,25 @@ function handleSubmit(valRaw) {
       proband_counter: num,
       accepted: true
     });
+
+    // 🟢 LOGGING – AUTO ACCEPT
+    logRound({
+      runde: state.runde,
+      algo: prevOffer,
+      counter: num,
+      accepted: true,
+      finished: true,
+      deal: num
+    });
+
     finish(true, num);
     return;
   }
 
-  // Abbruchchance
+  // === Abbruchchance prüfen ===
   if (maybeAbort(num)) return;
 
-  // Verwarnung (<2250)
+  /* === VERWARNUNG < 2250 === */
   if (num < 2250) {
     state.warningCount++;
     state.warningText = "Ihr Angebot liegt deutlich unter der akzeptablen Preiszone.";
@@ -300,6 +341,16 @@ function handleSubmit(valRaw) {
       runde: state.runde,
       algo_offer: prevOffer,
       proband_counter: num
+    });
+
+    // 🟢 LOGGING – Verwarnung
+    logRound({
+      runde: state.runde,
+      algo: prevOffer,
+      counter: num,
+      accepted: false,
+      finished: false,
+      deal: ""
     });
 
     if (state.warningCount >= 2) {
@@ -312,17 +363,29 @@ function handleSubmit(valRaw) {
     return;
   }
 
-  // Normale Runde
+  /* === NORMALE RUNDE === */
   state.warningText = "";
+
   state.history.push({
     runde: state.runde,
     algo_offer: prevOffer,
     proband_counter: num
   });
 
+  // 🟢 LOGGING – normale Runde
+  logRound({
+    runde: state.runde,
+    algo: prevOffer,
+    counter: num,
+    accepted: false,
+    finished: false,
+    deal: ""
+  });
+
   const next = computeNextOffer(num);
   state.current_offer = next;
 
+  /* === letzte Runde erreicht? === */
   if (state.runde >= state.max_runden) {
     viewThink(() => viewDecision());
     return;
@@ -362,7 +425,7 @@ function viewDecision() {
 
 
 /* ============================================================
-   FINISH
+   FINISH – Ende der Verhandlung
 ============================================================ */
 
 function finish(accepted, deal) {
@@ -370,18 +433,15 @@ function finish(accepted, deal) {
   state.finished = true;
   state.deal_price = deal;
 
-  // Logging zu Google Sheets
-  if (window.sendRow) {
-    window.sendRow({
-      participant_id: state.participant_id,
-      runde: state.runde,
-      algo_offer: state.current_offer,
-      proband_counter: deal,
-      accepted,
-      finished: true,
-      deal_price: deal
-    });
-  }
+  // 🟢 LOGGING – FINAL
+  logRound({
+    runde: state.runde,
+    algo: state.current_offer,
+    counter: deal,
+    accepted,
+    finished: true,
+    deal
+  });
 
   app.innerHTML = `
     <div class="card">
@@ -406,4 +466,7 @@ function finish(accepted, deal) {
 ============================================================ */
 
 viewVignette();
+
+
+
 
