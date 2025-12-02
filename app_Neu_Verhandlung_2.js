@@ -16,6 +16,7 @@ const eur = n =>
 const app = document.getElementById("app");
 
 
+
 /* ============================================================
    ZUSTAND – Startpreis & Schmerzgrenze
 ============================================================ */
@@ -29,8 +30,10 @@ function newState() {
       crypto.randomUUID?.() ||
       "x_" + Date.now() + Math.random().toString(36).slice(2),
 
+    player_id: window.playerId ?? "UNKNOWN",
+
     runde: 1,
-    max_runden: randInt(8, 12),
+    max_runden: randInt(8, 12),  // wichtig: 8–12 Runden
 
     initial_offer: startpreis,
     min_price: schmerzgrenze,
@@ -80,8 +83,9 @@ function reductionLate(userOffer) {
 function computeNextOffer(userOffer) {
   const prev = state.current_offer;
 
-  let step =
-    state.runde <= 3 ? reductionEarly() : reductionLate(userOffer);
+  let step = state.runde <= 3
+    ? reductionEarly()
+    : reductionLate(userOffer);
 
   let newPrice = prev - step;
 
@@ -93,81 +97,66 @@ function computeNextOffer(userOffer) {
 
 
 /* ============================================================
-   ABBRUCHWAHRSCHEINLICHKEIT (NEU)
+   ABBRUCHWAHRSCHEINLICHKEIT – 5 PHASEN
 ============================================================ */
 
 function abortProbability(userOffer) {
 
   let chance = 0;
-
   const last = state.history[state.history.length - 1];
-  const lastOffer = last ? last.proband_counter : null;
 
-  /* ============================================================
-     PHASE 3 – Unverschämte Angebote (<2250)
-  ============================================================ */
-
+  /* === PHASE 1: <1500 → sofortiger Abbruch === */
   if (userOffer < 1500) {
-    return 100; // sofortiger Abbruch
+    return 100;
   }
 
+  /* === PHASE 2: 1500–2249 → Verwarnungen, aber kein sofortiger Abbruch === */
   if (userOffer < 2250) {
-
-    // erstes unverschämtes Angebot
-    if (state.warningCount === 0) {
-      chance += randInt(10, 25);
-      return Math.min(chance + state.runde * 2, 75);
-    }
-
-    // zweites unverschämtes Angebot → sofortiger Abbruch
-    if (state.warningCount >= 1) {
-      return 100;
-    }
+    // kein Zufallsabbruch, ABER Verkäufer extrem misstrauisch
+    chance += 20 + state.runde * 3;
+    return Math.min(chance, 90);
   }
 
+  /* === PHASE 3: 2250–2999 → Risiko bei kleinen Schritten === */
+  if (userOffer < 3000) {
 
-  /* ============================================================
-     PHASE 2 – 2250 bis 2999 (Sprünge >=100)
-  ============================================================ */
-  if (userOffer >= 2250 && userOffer < 3000 && lastOffer !== null) {
-    const diff = Math.abs(userOffer - lastOffer);
-    if (diff >= 100) {
-      chance += randInt(5, 15);
+    if (last && last.proband_counter != null) {
+      const diff = Math.abs(userOffer - last.proband_counter);
+
+      if (diff <= 100) {
+        chance += randInt(10, 25);
+        state.warningText =
+          "Ihr Angebot ist zu gering. Kleine Schritte erhöhen das Abbruchrisiko.";
+      }
     }
+
+    // generelles Risiko + Runde
+    chance += state.runde * 2;
+    return Math.min(chance, 75);
   }
 
-
-  /* ============================================================
-     PHASE 1,5 – 3000 bis 3999 (Sprünge >=70)
-  ============================================================ */
-  if (userOffer >= 3000 && userOffer < 4000 && lastOffer !== null) {
-    const diff = Math.abs(userOffer - lastOffer);
-    if (diff >= 70) {
-      chance += randInt(2, 10);
-    }
+  /* === PHASE 4: 3000–3700 → reine Zufallsquote 1–7% pro Runde === */
+  if (userOffer < 3700) {
+    const base = randInt(1, 7);
+    chance += base * state.runde;
+    return Math.min(chance, 75);
   }
 
+  /* === PHASE 5: 3700–3999 → normales Misstrauen, kein Differenzrisiko === */
+  if (userOffer < 4000) {
+    chance += state.runde * 2;
+    return Math.min(chance, 65);
+  }
 
-  /* ============================================================
-     PHASE 1 – ab 4000: keine Differenz-Strafe
-  ============================================================ */
-
-  // nichts weiter
-
-
-  /* ============================================================
-     Runden-Effekt
-  ============================================================ */
-
-  chance += state.runde * 2;
-
-  return Math.min(chance, 75);
+  /* === >=4000 → hohes Vertrauen, kein Differenzrisiko === */
+  chance += state.runde;
+  return Math.min(chance, 40);
 }
 
 
 
 /* ============================================================
-   maybeAbort
+   ABORT WRAPPER
 ============================================================ */
 
 function maybeAbort(userOffer) {
@@ -196,14 +185,14 @@ function maybeAbort(userOffer) {
 
 
 /* ============================================================
-   ROUND LOGGING
+   LOGGING
 ============================================================ */
 
 function logRound({ runde, algo, counter, accepted, finished, deal }) {
   if (window.sendRow) {
     window.sendRow({
       participant_id: state.participant_id,
-      player_id: window.playerId,
+      player_id: state.player_id,
       runde,
       algo_offer: algo,
       proband_counter: counter,
@@ -217,7 +206,7 @@ function logRound({ runde, algo, counter, accepted, finished, deal }) {
 
 
 /* ============================================================
-   SCREEN: Abbruch
+   VIEWS
 ============================================================ */
 
 function viewAbort(chance) {
@@ -238,10 +227,6 @@ function viewAbort(chance) {
 
 
 
-/* ============================================================
-   VIGNETTE
-============================================================ */
-
 function viewVignette() {
   app.innerHTML = `
     <div class="card">
@@ -252,12 +237,8 @@ function viewVignette() {
       <p>Ein Besucher möchte sein <b>Designer-Ledersofa</b> verkaufen.
          Vergleichbare Sofas kosten zwischen <b>2.500 € und 10.000 €</b>.</p>
 
-      <p>Der Verkäufer reagiert auf deine Angebote, verfolgt aber eine eigene Preisuntergrenze.</p>
-
-      <p class="muted"><b>Wichtig:</b>  
-         Die Verhandlung dauert normalerweise 8–12 Runden,  
-         <b>kann aber jederzeit vorzeitig abgebrochen werden</b>,  
-         wenn die Verkäuferseite unzufrieden ist.</p>
+      <p>Die Verhandlung dauert <b>8–12 Runden</b>,  
+         <b>kann aber jederzeit vorzeitig abgebrochen werden</b>, wenn die Angebote zu schlecht sind.</p>
 
       <label class="consent">
         <input id="consent" type="checkbox" />
@@ -281,10 +262,6 @@ function viewVignette() {
 
 
 
-/* ============================================================
-   HISTORY TABLE
-============================================================ */
-
 function renderHistory() {
   if (!state.history.length) return "";
   return `
@@ -307,10 +284,6 @@ function renderHistory() {
 
 
 
-/* ============================================================
-   THINKING SCREEN
-============================================================ */
-
 function viewThink(next) {
   app.innerHTML = `
     <div class="card center">
@@ -323,7 +296,7 @@ function viewThink(next) {
 
 
 /* ============================================================
-   ACCEPT-HELPER
+   ACCEPT HELPER
 ============================================================ */
 
 function acceptAndFinish(num, prevOffer) {
@@ -350,16 +323,16 @@ function acceptAndFinish(num, prevOffer) {
 
 
 /* ============================================================
-   SCREEN: VERHANDLUNG
+   NEGOTIATE SCREEN (mit Farbskala)
 ============================================================ */
 
 function viewNegotiate(errorMsg = "") {
 
   const abortChance = abortProbability(state.current_offer);
 
-  let color = "#16a34a";
-  if (abortChance > 50) color = "#ea580c";
-  else if (abortChance > 25) color = "#eab308";
+  let color = "#16a34a"; // grün
+  if (abortChance > 50) color = "#ea580c"; // orange
+  else if (abortChance > 25) color = "#eab308"; // gelb
 
   app.innerHTML = `
     <div class="card">
@@ -420,55 +393,34 @@ function handleSubmit(valRaw) {
     return;
   }
 
-
-  /* ============================================================
-     Nutzer darf kein niedrigeres Gebot abgeben
-  ============================================================ */
-
+  /* === 1. Kein niedrigeres Angebot erlaubt === */
   if (state.history.length > 0) {
     const lastCounter = state.history[state.history.length - 1].proband_counter;
-    if (lastCounter !== null && num < lastCounter) {
-      viewNegotiate("Sie können kein niedrigeres Angebot als das vorherige machen.");
+    if (lastCounter != null && num < lastCounter) {
+      viewNegotiate("Sie können kein niedrigeres Angebot als Ihr letztes machen.");
       return;
     }
   }
 
-
   const prevOffer = state.current_offer;
   const rest = state.max_runden - state.runde;
 
+  /* === 2. INTELLIGENTE ACCEPT-LOGIK === */
 
-  /* ============================================================
-     INTELLIGENTE ACCEPT-LOGIK
-  ============================================================ */
+  if (num >= 5000) return acceptAndFinish(num, prevOffer);
+  if (num >= 4500 && rest <= 3) return acceptAndFinish(num, prevOffer);
+  if (num >= state.min_price && rest <= 1) return acceptAndFinish(num, prevOffer);
 
-  if (num >= 5000) {
-    acceptAndFinish(num, prevOffer);
+  /* === 3. <1500 sofortiger Abbruch === */
+  if (num < 1500) {
+    finish(false, null);
     return;
   }
 
-  if (num >= 4500 && rest <= 3) {
-    acceptAndFinish(num, prevOffer);
-    return;
-  }
-
-  if (num >= state.min_price && rest <= 1) {
-    acceptAndFinish(num, prevOffer);
-    return;
-  }
-
-
-  /* ============================================================
-     Abbruch prüfen
-  ============================================================ */
-
+  /* === 4. Abbruchchance prüfen === */
   if (maybeAbort(num)) return;
 
-
-  /* ============================================================
-     Verwarnung (<2250)
-  ============================================================ */
-
+  /* === 5. Verwarnung (<2250) === */
   if (num < 2250) {
     state.warningCount++;
     state.warningText = "Ihr Angebot liegt deutlich unter der akzeptablen Preiszone.";
@@ -498,10 +450,7 @@ function handleSubmit(valRaw) {
     return;
   }
 
-
-  /* ============================================================
-     Normale Runde
-  ============================================================ */
+  /* === 6. NORMALE RUNDE === */
 
   state.warningText = "";
 
@@ -568,7 +517,6 @@ function viewDecision() {
 ============================================================ */
 
 function finish(accepted, deal) {
-
   state.accepted = accepted;
   state.finished = true;
   state.deal_price = deal;
@@ -603,11 +551,13 @@ function finish(accepted, deal) {
 }
 
 
+
 /* ============================================================
    INIT
 ============================================================ */
 
 viewVignette();
+
 
 
 
