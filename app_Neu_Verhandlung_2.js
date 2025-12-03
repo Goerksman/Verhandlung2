@@ -16,6 +16,7 @@ const eur = n =>
 const app = document.getElementById("app");
 
 
+
 /* ============================================================
    ZUSTAND – Startpreis & Schmerzgrenze
 ============================================================ */
@@ -27,10 +28,10 @@ function newState() {
   return {
     participant_id:
       crypto.randomUUID?.() ||
-      "x_" + Date.now() + Math.random().toString(36).slice(2),
+      "v_" + Date.now() + Math.random().toString(36).slice(2),
 
     runde: 1,
-    max_runden: randInt(8, 12),   // 8–12 Runden
+    max_runden: randInt(8, 12),     // 8–12 Runden
 
     initial_offer: startpreis,
     min_price: schmerzgrenze,
@@ -48,6 +49,7 @@ function newState() {
 }
 
 let state = newState();
+
 
 
 /* ============================================================
@@ -79,45 +81,80 @@ function reductionLate(userOffer) {
 function computeNextOffer(userOffer) {
   const prev = state.current_offer;
 
-  let step = state.runde <= 3 ? reductionEarly()
-                              : reductionLate(userOffer);
+  let step =
+    state.runde <= 3 ? reductionEarly()
+                     : reductionLate(userOffer);
 
   let newPrice = prev - step;
 
-  if (newPrice < state.min_price) newPrice = state.min_price;
+  if (newPrice < state.min_price)
+    newPrice = state.min_price;
 
   return round10(newPrice);
 }
 
 
+
 /* ============================================================
-   ABBRUCHWAHRSCHEINLICHKEIT – VARIANTE A (Final)
+   ABBRUCHWAHRSCHEINLICHKEIT
 ============================================================ */
 
 function abortProbability(userOffer) {
   let chance = 0;
 
-  // ⭐ 1) Sehr niedrige Angebote erhöhen Risiko stark (<3000)
-  if (userOffer < 3000) {
-    chance += randInt(10, 30);
+  /* ------------------------------------------------------------
+     1) Unverschämte Angebote sofort riskant
+  ------------------------------------------------------------ */
+  if (userOffer < 1500) return 100;
+
+  /* ------------------------------------------------------------
+     2) Angebote <2250 erhöhen Risiko stark
+  ------------------------------------------------------------ */
+  if (userOffer < 2250) {
+    chance += randInt(20, 40);
   }
 
-  // ⭐ 2) Kleine Schritte (<100) erhöhen Risiko
-  if (state.history.length > 0) {
-    const last = state.history[state.history.length - 1].proband_counter;
+  /* ------------------------------------------------------------
+     3) Bereich 2250–3000 → kleine Schritte gefährlich
+  ------------------------------------------------------------ */
+  const last = state.history[state.history.length - 1];
 
-    if (last !== null && userOffer < 4000) {  
-      const diff = Math.abs(userOffer - last);
-      if (diff <= 100) {
-        chance += randInt(5, 20);
+  if (userOffer >= 2250 && userOffer < 3000) {
+    if (last && last.proband_counter != null) {
+      const diff = Math.abs(userOffer - last.proband_counter);
+
+      if (diff < 100) {
+        chance += randInt(10, 25);
       }
     }
   }
 
-  // ⭐ 3) Risiko steigt pro Runde
+  /* ------------------------------------------------------------
+     4) Bereich 3000–3700 → leichte Zufallswahrscheinlichkeit
+  ------------------------------------------------------------ */
+  if (userOffer >= 3000 && userOffer < 3700) {
+    chance += randInt(1, 7);
+  }
+
+  /* ------------------------------------------------------------
+     5) Bereich 3700–4000 → kaum Risiko
+  ------------------------------------------------------------ */
+  if (userOffer >= 3700 && userOffer < 4000) {
+    chance += randInt(0, 3);
+  }
+
+  /* ------------------------------------------------------------
+     6) Ab 4000 → diff-Regel entfällt, Risiko nur minimal
+  ------------------------------------------------------------ */
+  if (userOffer >= 4000) {
+    chance += randInt(0, 2);
+  }
+
+  /* ------------------------------------------------------------
+     7) Pro Runde steigt Risiko
+  ------------------------------------------------------------ */
   chance += state.runde * 2;
 
-  // ⭐ Maximal 75 %
   return Math.min(chance, 75);
 }
 
@@ -129,11 +166,11 @@ function maybeAbort(userOffer) {
 
     logRound({
       runde: state.runde,
-      algo: state.current_offer,
-      counter: userOffer,
+      algo_offer: state.current_offer,
+      proband_counter: userOffer,
       accepted: false,
       finished: true,
-      deal: ""
+      deal_price: ""
     });
 
     state.finished = true;
@@ -145,28 +182,32 @@ function maybeAbort(userOffer) {
 }
 
 
+
 /* ============================================================
-   ROUND LOGGING
+   LOGGING
 ============================================================ */
 
-function logRound({ runde, algo, counter, accepted, finished, deal }) {
+function logRound(row) {
   if (window.sendRow) {
     window.sendRow({
       participant_id: state.participant_id,
       player_id: window.playerId,
-      runde,
-      algo_offer: algo,
-      proband_counter: counter,
-      accepted,
-      finished,
-      deal_price: deal
+      proband_code: window.probandCode,
+
+      runde: row.runde,
+      algo_offer: row.algo_offer,
+      proband_counter: row.proband_counter,
+      accepted: row.accepted,
+      finished: row.finished,
+      deal_price: row.deal_price
     });
   }
 }
 
 
+
 /* ============================================================
-   SCREEN: Abbruch
+   SCREENS
 ============================================================ */
 
 function viewAbort(chance) {
@@ -175,10 +216,13 @@ function viewAbort(chance) {
       <h1>Verhandlung abgebrochen</h1>
       <p>Die Verkäuferseite hat die Verhandlung beendet.</p>
       <p class="muted">Abbruchwahrscheinlichkeit: ${chance}%</p>
+
       ${renderHistory()}
+
       <button id="restartBtn">Neue Verhandlung</button>
     </div>
   `;
+
   document.getElementById("restartBtn").onclick = () => {
     state = newState();
     viewVignette();
@@ -186,26 +230,18 @@ function viewAbort(chance) {
 }
 
 
-/* ============================================================
-   VIGNETTE
-============================================================ */
-
 function viewVignette() {
   app.innerHTML = `
     <div class="card">
       <h1>Designer-Verkaufsmesse</h1>
 
-      <p class="muted">Stelle dir folgende Situation vor:</p>
+      <p class="muted">
+        Die Verhandlung dauert normalerweise 8–12 Runden, 
+        <b>kann aber jederzeit früher abgebrochen werden</b>.
+      </p>
 
-      <p>Ein Besucher möchte sein <b>Designer-Ledersofa</b> verkaufen.
-         Vergleichbare Sofas kosten zwischen <b>2.500 € und 10.000 €</b>.</p>
-
-      <p>Der Verkäufer reagiert auf deine Angebote, verfolgt aber eine eigene Preisuntergrenze.</p>
-
-      <p class="muted"><b>Wichtig:</b>  
-         Die Verhandlung dauert normalerweise 8–12 Runden,  
-         <b>kann aber jederzeit vorzeitig abgebrochen werden</b>,  
-         wenn die Verkäuferseite unzufrieden ist.</p>
+      <p>Ein Verkäufer möchte ein Designer-Ledersofa verkaufen. 
+      Du machst Gegenangebote, und der Verkäufer reagiert dynamisch darauf.</p>
 
       <label class="consent">
         <input id="consent" type="checkbox" />
@@ -220,7 +256,6 @@ function viewVignette() {
   const b = document.getElementById("startBtn");
 
   c.onchange = () => b.disabled = !c.checked;
-
   b.onclick = () => {
     state = newState();
     viewNegotiate();
@@ -228,17 +263,18 @@ function viewVignette() {
 }
 
 
-/* ============================================================
-   HISTORY TABLE
-============================================================ */
-
 function renderHistory() {
   if (!state.history.length) return "";
+
   return `
     <h2>Verlauf</h2>
     <table>
       <thead>
-        <tr><th>Runde</th><th>Verkäufer</th><th>Du</th></tr>
+        <tr>
+          <th>Runde</th>
+          <th>Verkäufer</th>
+          <th>Du</th>
+        </tr>
       </thead>
       <tbody>
         ${state.history.map(h => `
@@ -246,16 +282,14 @@ function renderHistory() {
             <td>${h.runde}</td>
             <td>${eur(h.algo_offer)}</td>
             <td>${h.proband_counter != null ? eur(h.proband_counter) : "-"}</td>
-          </tr>`).join("")}
+          </tr>
+        `).join("")}
       </tbody>
     </table>
   `;
 }
 
 
-/* ============================================================
-   Übergang
-============================================================ */
 
 function viewThink(next) {
   app.innerHTML = `
@@ -267,8 +301,9 @@ function viewThink(next) {
 }
 
 
+
 /* ============================================================
-   INTELLIGENTER ACCEPT-Helfer
+   ACCEPT HELPER
 ============================================================ */
 
 function acceptAndFinish(num, prevOffer) {
@@ -282,57 +317,61 @@ function acceptAndFinish(num, prevOffer) {
 
   logRound({
     runde: state.runde,
-    algo: prevOffer,
-    counter: num,
+    algo_offer: prevOffer,
+    proband_counter: num,
     accepted: true,
     finished: true,
-    deal: num
+    deal_price: num
   });
 
   finish(true, num);
 }
 
 
+
 /* ============================================================
-   SCREEN: VERHANDLUNG
+   VERHANDLUNGSSCREEN
 ============================================================ */
 
 function viewNegotiate(errorMsg = "") {
 
   const abortChance = abortProbability(state.current_offer);
 
-  let color = "#16a34a"; // grün
-  if (abortChance > 50) color = "#ea580c"; // orange
-  else if (abortChance > 25) color = "#eab308"; // gelb
+  let color = "#16a34a";
+  if (abortChance > 50) color = "#ea580c";
+  else if (abortChance > 25) color = "#eab308";
 
   app.innerHTML = `
     <div class="card">
       <h1>Verkaufsverhandlung</h1>
-      <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
+
+      <p class="muted">Spieler-ID: ${window.playerId}</p>
+      <p class="muted">Verhandlungs-ID: ${state.participant_id}</p>
 
       <div class="card" style="margin-bottom:12px;">
         <strong>Aktuelles Angebot:</strong> ${eur(state.current_offer)}
       </div>
 
       <div style="
-        background: ${color}22; 
-        border-left: 6px solid ${color};
-        padding: 8px 12px;
-        margin-bottom: 10px;
-        border-radius: 6px;">
+        background:${color}22;
+        border-left:6px solid ${color};
+        padding:10px;
+        border-radius:8px;
+        margin-bottom:10px;">
         <b style="color:${color};">Abbruchwahrscheinlichkeit:</b>
         <span style="color:${color}; font-weight:600;">${abortChance}%</span>
       </div>
 
       <label>Dein Gegenangebot (€)</label>
-      <input id="counter" type="number" min="0" step="0.01" />
+      <input id="counter" type="number" min="0" step="0.01">
 
       <button id="sendBtn">Gegenangebot senden</button>
       <button id="acceptBtn" class="ghost">Annehmen</button>
 
-      ${renderHistory()}
       ${state.warningText ? `<p class="muted" style="color:#b91c1c">${state.warningText}</p>` : ""}
       ${errorMsg ? `<p class="muted" style="color:red">${errorMsg}</p>` : ""}
+
+      ${renderHistory()}
     </div>
   `;
 
@@ -350,8 +389,9 @@ function viewNegotiate(errorMsg = "") {
 }
 
 
+
 /* ============================================================
-   HANDLE SUBMIT – mit allen Regeln
+   HANDLE SUBMIT
 ============================================================ */
 
 function handleSubmit(valRaw) {
@@ -359,54 +399,65 @@ function handleSubmit(valRaw) {
   const num = Number(val);
 
   if (!Number.isFinite(num) || num <= 0) {
-    viewNegotiate("Bitte gültige Zahl ≥ 0 eingeben.");
+    viewNegotiate("Bitte gültige Zahl eingeben.");
     return;
   }
 
-  /* ============================================================
-     REGEL: Spieler darf kein niedrigeres Angebot machen
-  ============================================================= */
+  /* ------------------------------------------------------------
+     Spieler darf kein niedrigeres Angebot abgeben
+  ------------------------------------------------------------ */
   if (state.history.length > 0) {
-    const lastCounter = state.history[state.history.length - 1].proband_counter;
-
-    if (lastCounter !== null && num < lastCounter) {
-      viewNegotiate("Sie können kein niedrigeres Angebot als Ihr letztes machen.");
+    const last = state.history[state.history.length - 1].proband_counter;
+    if (last != null && num < last) {
+      viewNegotiate("Du darfst kein niedrigeres Angebot als zuvor machen.");
       return;
     }
   }
 
-  /* ============================================================
-     SOFORT-ABBRUCH BEI < 1500 €
-  ============================================================= */
+  /* ------------------------------------------------------------
+     UNVERSCHÄMT: <1500 → sofortiger Abbruch
+  ------------------------------------------------------------ */
   if (num < 1500) {
-    finish(false, null);
-    return;
-  }
-
-  const prevOffer = state.current_offer;
-
-  /* ============================================================
-     WARNUNGSPHASE < 2250 €
-  ============================================================= */
-
-  if (num < 2250) {
-
-    state.warningCount++;
-    state.warningText = "Ihr Angebot ist deutlich zu niedrig und wirkt unverschämt.";
-
     state.history.push({
       runde: state.runde,
-      algo_offer: prevOffer,
+      algo_offer: state.current_offer,
       proband_counter: num
     });
 
     logRound({
       runde: state.runde,
-      algo: prevOffer,
-      counter: num,
+      algo_offer: state.current_offer,
+      proband_counter: num,
+      accepted: false,
+      finished: true,
+      deal_price: ""
+    });
+
+    viewAbort(100);
+    return;
+  }
+
+  /* ------------------------------------------------------------
+     UNERWÜNSCHT: <2250 → Verwarnung
+  ------------------------------------------------------------ */
+  if (num < 2250) {
+
+    state.warningCount++;
+    state.warningText = "Ihr Angebot liegt deutlich unter der akzeptablen Preiszone.";
+
+    state.history.push({
+      runde: state.runde,
+      algo_offer: state.current_offer,
+      proband_counter: num
+    });
+
+    logRound({
+      runde: state.runde,
+      algo_offer: state.current_offer,
+      proband_counter: num,
       accepted: false,
       finished: false,
-      deal: ""
+      deal_price: ""
     });
 
     if (state.warningCount >= 2) {
@@ -419,37 +470,34 @@ function handleSubmit(valRaw) {
     return;
   }
 
-
-  /* ============================================================
-     Abbruchchance bei normalen Runden
-  ============================================================= */
-
+  /* ------------------------------------------------------------
+     Abbruchchance prüfen
+  ------------------------------------------------------------ */
   if (maybeAbort(num)) return;
 
-
-  /* ============================================================
-     NORMALE RUNDE
-  ============================================================= */
+  /* ------------------------------------------------------------
+     normale Runde
+  ------------------------------------------------------------ */
 
   state.warningText = "";
 
   state.history.push({
     runde: state.runde,
-    algo_offer: prevOffer,
+    algo_offer: state.current_offer,
     proband_counter: num
   });
 
   logRound({
     runde: state.runde,
-    algo: prevOffer,
-    counter: num,
+    algo_offer: state.current_offer,
+    proband_counter: num,
     accepted: false,
     finished: false,
-    deal: ""
+    deal_price: ""
   });
 
-  const next = computeNextOffer(num);
-  state.current_offer = next;
+  const nextOffer = computeNextOffer(num);
+  state.current_offer = nextOffer;
 
   if (state.runde >= state.max_runden) {
     viewThink(() => viewDecision());
@@ -461,11 +509,13 @@ function handleSubmit(valRaw) {
 }
 
 
+
 /* ============================================================
-   SCREEN: LETZTE RUNDE
+   LETZTE RUNDE
 ============================================================ */
 
 function viewDecision() {
+
   app.innerHTML = `
     <div class="card">
       <h1>Letzte Runde</h1>
@@ -489,32 +539,35 @@ function viewDecision() {
 }
 
 
+
 /* ============================================================
    FINISH
 ============================================================ */
 
-function finish(accepted, deal) {
+function finish(accepted, dealPrice) {
 
   state.accepted = accepted;
   state.finished = true;
-  state.deal_price = deal;
+  state.deal_price = dealPrice;
 
   logRound({
     runde: state.runde,
-    algo: state.current_offer,
-    counter: deal,
+    algo_offer: state.current_offer,
+    proband_counter: dealPrice,
     accepted,
     finished: true,
-    deal
+    deal_price: dealPrice
   });
 
   app.innerHTML = `
     <div class="card">
       <h1>Verhandlung beendet</h1>
 
-      <p>${accepted
-        ? `Einigung erzielt bei <b>${eur(deal)}</b>`
-        : "Keine Einigung erzielt."}</p>
+      <p>${
+        accepted
+          ? `Einigung erzielt bei <b>${eur(dealPrice)}</b>`
+          : "Keine Einigung erzielt."
+      }</p>
 
       ${renderHistory()}
 
@@ -529,8 +582,10 @@ function finish(accepted, deal) {
 }
 
 
+
 /* ============================================================
    INIT
 ============================================================ */
 
 viewVignette();
+
