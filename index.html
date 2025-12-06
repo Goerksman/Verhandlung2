@@ -42,8 +42,10 @@
     (function(){
       const p = new URLSearchParams(location.search);
 
+      // Studien-ID aus URL
       window.probandCode = p.get('code') || p.get('c') || 'UNKNOWN';
 
+      // Persistente Spieler-ID (bleibt über alle Spiele gleich)
       let pid = localStorage.getItem('playerId');
       if (!pid) {
         pid = crypto.randomUUID?.() || ('p_'+Date.now()+Math.random().toString(36).substring(2));
@@ -53,10 +55,27 @@
     })();
   </script>
 
-  <!-- Optional: Logging zu Google Sheets -->
+  <!-- Logging zu Google Sheets -->
   <script>
+    const APP_URL = "https://script.google.com/macros/s/AKfycbylfop8RoyuoIh_zFkwJKkAODc1x39jlTEoK6mRmUSvgwpSWr5Qxoz-OtyeM2UDNGs6GQ/exec";
+
     window.sendRow = function(row){
-      console.log("logEvent:", row); 
+      fetch(APP_URL, {
+        method: "POST",
+        body: new URLSearchParams({
+          participant_id: row.participant_id,   // Verhandlungs-ID
+          player_id: window.playerId,           // persistente Spieler-ID
+          proband_code: window.probandCode,     // Studien-/Experimentcode
+
+          runde: row.runde ?? "",
+          algo_offer: row.algo_offer ?? "",
+          proband_counter: row.proband_counter ?? "",
+          accepted: row.accepted ? "1" : "0",
+          finished: row.finished ? "1" : "0",
+          deal_price: row.deal_price ?? ""
+        }),
+        mode: "no-cors"
+      }).catch(err => console.error("SEND ERROR →", err));
     };
   </script>
 
