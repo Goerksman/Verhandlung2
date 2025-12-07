@@ -31,7 +31,7 @@ function newState() {
       "v_" + Date.now() + Math.random().toString(36).slice(2),
 
     runde: 1,
-    max_runden: randInt(8, 12),     // 8–12 Runden
+    max_runden: randInt(8, 12),  // gewünschte 8–12 Runden
 
     initial_offer: startpreis,
     min_price: schmerzgrenze,
@@ -96,67 +96,54 @@ function computeNextOffer(userOffer) {
 
 
 /* ============================================================
-   ABBRUCHWAHRSCHEINLICHKEIT
+   EINHEITLICHE ABBRUCHWAHRSCHEINLICHKEIT
 ============================================================ */
 
 function abortProbability(userOffer) {
+
+  const sellerOffer = state.current_offer;
+  const diff = Math.abs(sellerOffer - userOffer);
+
   let chance = 0;
 
-  /* ------------------------------------------------------------
-     1) Unverschämte Angebote sofort riskant
-  ------------------------------------------------------------ */
+  // 1) <1500 sofortiger Abbruch
   if (userOffer < 1500) return 100;
 
-  /* ------------------------------------------------------------
-     2) Angebote <2250 erhöhen Risiko stark
-  ------------------------------------------------------------ */
+  // 2) <2250 → Verwarnzone + Risiko
   if (userOffer < 2250) {
     chance += randInt(20, 40);
   }
 
-  /* ------------------------------------------------------------
-     3) Bereich 2250–3000 → kleine Schritte gefährlich
-  ------------------------------------------------------------ */
-  const last = state.history[state.history.length - 1];
-
+  // 3) 2250–3000 → kleine Schritte (<100) riskant
   if (userOffer >= 2250 && userOffer < 3000) {
-    if (last && last.proband_counter != null) {
-      const diff = Math.abs(userOffer - last.proband_counter);
-
-      if (diff < 100) {
-        chance += randInt(10, 25);
-      }
-    }
+    if (diff < 100) chance += randInt(10, 25);
   }
 
-  /* ------------------------------------------------------------
-     4) Bereich 3000–3700 → leichte Zufallswahrscheinlichkeit
-  ------------------------------------------------------------ */
+  // 4) 3000–3700 → leicht riskante Zone
   if (userOffer >= 3000 && userOffer < 3700) {
     chance += randInt(1, 7);
   }
 
-  /* ------------------------------------------------------------
-     5) Bereich 3700–4000 → kaum Risiko
-  ------------------------------------------------------------ */
+  // 5) 3700–4000 → kaum Risiko
   if (userOffer >= 3700 && userOffer < 4000) {
     chance += randInt(0, 3);
   }
 
-  /* ------------------------------------------------------------
-     6) Ab 4000 → diff-Regel entfällt, Risiko nur minimal
-  ------------------------------------------------------------ */
+  // 6) Ab 4000 → Diff uninteressant
   if (userOffer >= 4000) {
-    chance += randInt(0, 2);
+    return randInt(0, 2);
   }
 
-  /* ------------------------------------------------------------
-     7) Pro Runde steigt Risiko
-  ------------------------------------------------------------ */
-  chance += state.runde * 2;
+  // 7) Differenzbasierte Strafe (nur <4000 relevant)
+  if (diff >= 500) chance += 25;
+  else if (diff >= 300) chance += 15;
+  else if (diff >= 150) chance += 10;
+  else if (diff >= 100) chance += 5;
 
-  return Math.min(chance, 75);
+  return Math.min(chance, 95);
 }
+
+/* === Realer Abbruch basierend auf derselben Logik === */
 
 function maybeAbort(userOffer) {
   const chance = abortProbability(userOffer);
@@ -178,6 +165,7 @@ function maybeAbort(userOffer) {
     viewAbort(chance);
     return true;
   }
+
   return false;
 }
 
@@ -234,18 +222,19 @@ function viewVignette() {
   app.innerHTML = `
     <div class="card">
       <h1>Designer-Verkaufsmesse</h1>
+
       <p class="muted">Stelle dir folgende Situation vor:</p>
 
       <p>Ein Besucher möchte sein <b>Designer-Ledersofa</b> verkaufen.
       Vergleichbare Sofas kosten <b>2.500–10.000 €</b>.</p>
 
-      <p>Der Verkäufer reagiert auf deine Angebote, hat aber eine eigene Untergrenze.</p>
+      <p>Der Verkäufer reagiert auf deine Angebote, verfolgt aber eine eigene Preisuntergrenze.</p>
 
-      <p class="muted"><b>Hinweis:</b>  
-        Die Verhandlung dauert zufällig 8–12 Runden.  
-        Gleichzeitig beeinflusst dein Verhalten das <b>Abbruchsrisiko</b>:  
-        <i>unangemessene, zu niedrige oder wenig veränderte Angebote können die Wahrscheinlichkeit erhöhen,
-        dass der Verkäufer die Verhandlung vorzeitig beendet.</i>
+      <p class="muted"><b>Hinweis:</b>
+        Die Verhandlung dauert zufällig 8–12 Runden.
+        Gleichzeitig beeinflusst dein Verhalten das <b>Abbruchsrisiko</b>:
+        Unangemessen niedrige oder kaum geänderte Angebote können dazu führen,
+        dass der Verkäufer die Verhandlung vorzeitig beendet.
       </p>
 
       <label class="consent">
@@ -267,6 +256,8 @@ function viewVignette() {
     viewNegotiate();
   };
 }
+
+
 
 function renderHistory() {
   if (!state.history.length) return "";
@@ -335,7 +326,7 @@ function acceptAndFinish(num, prevOffer) {
 
 
 /* ============================================================
-   VERHANDLUNGSSCREEN
+   VERHANDLUNGSSCREEN (Anzeige aktualisiert jede Runde)
 ============================================================ */
 
 function viewNegotiate(errorMsg = "") {
@@ -408,9 +399,7 @@ function handleSubmit(valRaw) {
     return;
   }
 
-  /* ------------------------------------------------------------
-     Spieler darf kein niedrigeres Angebot abgeben
-  ------------------------------------------------------------ */
+  // kein niedrigeres Angebot
   if (state.history.length > 0) {
     const last = state.history[state.history.length - 1].proband_counter;
     if (last != null && num < last) {
@@ -419,9 +408,7 @@ function handleSubmit(valRaw) {
     }
   }
 
-  /* ------------------------------------------------------------
-     UNVERSCHÄMT: <1500 → sofortiger Abbruch
-  ------------------------------------------------------------ */
+  // Sofortiger Abbruch <1500
   if (num < 1500) {
     state.history.push({
       runde: state.runde,
@@ -442,9 +429,7 @@ function handleSubmit(valRaw) {
     return;
   }
 
-  /* ------------------------------------------------------------
-     UNERWÜNSCHT: <2250 → Verwarnung
-  ------------------------------------------------------------ */
+  // Warnzone <2250
   if (num < 2250) {
 
     state.warningCount++;
@@ -475,15 +460,10 @@ function handleSubmit(valRaw) {
     return;
   }
 
-  /* ------------------------------------------------------------
-     Abbruchchance prüfen
-  ------------------------------------------------------------ */
+  // echte Abbruchprüfung
   if (maybeAbort(num)) return;
 
-  /* ------------------------------------------------------------
-     normale Runde
-  ------------------------------------------------------------ */
-
+  // normale Runde
   state.warningText = "";
 
   state.history.push({
@@ -593,5 +573,3 @@ function finish(accepted, dealPrice) {
 ============================================================ */
 
 viewVignette();
-
-
