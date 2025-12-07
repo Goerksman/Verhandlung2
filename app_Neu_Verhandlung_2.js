@@ -234,14 +234,19 @@ function viewVignette() {
   app.innerHTML = `
     <div class="card">
       <h1>Designer-Verkaufsmesse</h1>
+      <p class="muted">Stelle dir folgende Situation vor:</p>
 
-      <p class="muted">
-        Die Verhandlung dauert normalerweise 8–12 Runden, 
-        <b>kann aber jederzeit früher abgebrochen werden</b>.
+      <p>Ein Besucher möchte sein <b>Designer-Ledersofa</b> verkaufen.
+      Vergleichbare Sofas kosten <b>2.500–10.000 €</b>.</p>
+
+      <p>Der Verkäufer reagiert auf deine Angebote, hat aber eine eigene Untergrenze.</p>
+
+      <p class="muted"><b>Hinweis:</b>  
+        Die Verhandlung dauert zufällig 8–12 Runden.  
+        Gleichzeitig beeinflusst dein Verhalten das <b>Abbruchsrisiko</b>:  
+        <i>unangemessene, zu niedrige oder wenig veränderte Angebote können die Wahrscheinlichkeit erhöhen,
+        dass der Verkäufer die Verhandlung vorzeitig beendet.</i>
       </p>
-
-      <p>Ein Verkäufer möchte ein Designer-Ledersofa verkaufen. 
-      Du machst Gegenangebote, und der Verkäufer reagiert dynamisch darauf.</p>
 
       <label class="consent">
         <input id="consent" type="checkbox" />
@@ -256,12 +261,12 @@ function viewVignette() {
   const b = document.getElementById("startBtn");
 
   c.onchange = () => b.disabled = !c.checked;
+
   b.onclick = () => {
     state = newState();
     viewNegotiate();
   };
 }
-
 
 function renderHistory() {
   if (!state.history.length) return "";
@@ -588,4 +593,5 @@ function finish(accepted, dealPrice) {
 ============================================================ */
 
 viewVignette();
+
 
