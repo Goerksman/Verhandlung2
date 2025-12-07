@@ -16,9 +16,8 @@ const eur = n =>
 const app = document.getElementById("app");
 
 
-
 /* ============================================================
-   ZUSTAND – Startpreis & Schmerzgrenze
+   ZUSTAND
 ============================================================ */
 
 function newState() {
@@ -27,11 +26,10 @@ function newState() {
 
   return {
     participant_id:
-      crypto.randomUUID?.() ||
-      "v_" + Date.now() + Math.random().toString(36).slice(2),
+      crypto.randomUUID?.() || "v_" + Date.now() + Math.random().toString(36).slice(2),
 
     runde: 1,
-    max_runden: randInt(8, 12),  // gewünschte 8–12 Runden
+    max_runden: randInt(8, 12),
 
     initial_offer: startpreis,
     min_price: schmerzgrenze,
@@ -53,7 +51,7 @@ let state = newState();
 
 
 /* ============================================================
-   PREISLOGIK
+   PREISLOGIK + ANNAHMELOGIK (Möglichkeit A)
 ============================================================ */
 
 function reductionEarly() {
@@ -78,9 +76,35 @@ function reductionLate(userOffer) {
   return round10(diff * percent);
 }
 
-function computeNextOffer(userOffer) {
-  const prev = state.current_offer;
+/* -----------------------------------------------------------------------------------
+   Algorithmus darf gute Angebote ANNEHMEN und Käufer nicht unterbieten (MÖGLICHKEIT A)
+------------------------------------------------------------------------------------ */
+function shouldAccept(userOffer) {
 
+  const sellerOffer = state.current_offer;
+  const diffPercent = Math.abs(userOffer - sellerOffer) / sellerOffer;
+
+  // 1) Angebote >= 5000 immer akzeptieren
+  if (userOffer >= 5000) return true;
+
+  // 2) Wenn Käufer >= Verkäuferangebot → akzeptieren
+  if (userOffer >= sellerOffer) return true;
+
+  // 3) Wenn Käufer innerhalb 5% des Angebotspreises liegt
+  if (diffPercent <= 0.05) return true;
+
+  // 4) Kurz vor Ende akzeptiert der Verkäufer eher
+  if (state.max_runden - state.runde <= 1 && userOffer >= state.min_price) return true;
+
+  return false;
+}
+
+function computeNextOffer(userOffer) {
+
+  // Wenn Algorithmus akzeptieren würde → kein Unterbieten mehr
+  if (shouldAccept(userOffer)) return userOffer;
+
+  const prev = state.current_offer;
   let step =
     state.runde <= 3 ? reductionEarly()
                      : reductionLate(userOffer);
@@ -96,7 +120,7 @@ function computeNextOffer(userOffer) {
 
 
 /* ============================================================
-   ABBRUCHWAHRSCHEINLICHKEIT (Version A)
+   ABBRUCHWAHRSCHEINLICHKEIT – Möglichkeit B
 ============================================================ */
 
 function abortProbability(userOffer) {
@@ -106,35 +130,31 @@ function abortProbability(userOffer) {
 
   let chance = 0;
 
-  // 1: Komplett unpassend → sofort Abbruch
+  // <1500 → sofortige Abbruchgefahr
   if (userOffer < 1500) return 100;
 
-  // 2: <2250 → Verwarnzone
-  if (userOffer < 2250) {
-    chance += randInt(20, 40);
-  }
+  // <2250 → hohe Gefahr
+  if (userOffer < 2250) chance += randInt(20, 40);
 
-  // 3: 2250–3000 → kleine Schritte <100 erhöhen Risiko
+  // 2250–3000 → kleine Schritte riskant
   if (userOffer >= 2250 && userOffer < 3000) {
     if (diff < 100) chance += randInt(10, 25);
   }
 
-  // 4: 3000–3700 → leichte Zufallschance
+  // 3000–3700 → leichte Zufallsgefahr
   if (userOffer >= 3000 && userOffer < 3700) {
     chance += randInt(1, 7);
   }
 
-  // 5: 3700–4000 → sehr geringes Risiko
+  // 3700–4000 → minimale Gefahr
   if (userOffer >= 3700 && userOffer < 4000) {
     chance += randInt(0, 3);
   }
 
-  // 6: Ab 4000 → praktisch kein Risiko
-  if (userOffer >= 4000) {
-    return randInt(0, 2);
-  }
+  // Ab 4000 → diff egal
+  if (userOffer >= 4000) return randInt(0, 2);
 
-  // 7: große Differenzen bestrafen
+  // Differenzabhängige Gefahr (unter 4000 aktiv)
   if (diff >= 500) chance += 25;
   else if (diff >= 300) chance += 15;
   else if (diff >= 150) chance += 10;
@@ -144,15 +164,10 @@ function abortProbability(userOffer) {
 }
 
 
-
-/* ============================================================
-   REALER ABBRUCH
-============================================================ */
-
 function maybeAbort(userOffer) {
   const chance = abortProbability(userOffer);
-  const roll = randInt(1, 100);
 
+  const roll = randInt(1, 100);
   if (roll <= chance) {
 
     logRound({
@@ -169,7 +184,6 @@ function maybeAbort(userOffer) {
     viewAbort(chance);
     return true;
   }
-
   return false;
 }
 
@@ -199,7 +213,7 @@ function logRound(row) {
 
 
 /* ============================================================
-   SCREEN: ABBRUCH
+   SCREENS
 ============================================================ */
 
 function viewAbort(chance) {
@@ -223,10 +237,6 @@ function viewAbort(chance) {
 
 
 
-/* ============================================================
-   SCREEN: VIGNETTE (aktualisiert)
-============================================================ */
-
 function viewVignette() {
   app.innerHTML = `
     <div class="card">
@@ -234,23 +244,16 @@ function viewVignette() {
 
       <p class="muted">Stelle dir folgende Situation vor:</p>
 
-      <p>
-        Du befindest dich auf einer <b>exklusiven Couch-Messe</b>.  
-        Ein Verkäufer bietet dort eine <b>hochwertige Designer-Ledercouch</b> an.  
-        Vergleichbare Ledercouches liegen üblicherweise in einer 
-        <b>Preisspanne von 2.500 bis 10.000 €</b>.
-      </p>
+      <p>Ein Verkäufer bietet eine <b>hochwertige Designer-Ledercouch</b> auf einer Möbelmesse an.
+      Vergleichbare Sofas kosten zwischen <b>2.500 € und 10.000 €</b>.</p>
 
-      <p>
-        Der Verkäufer reagiert dynamisch auf deine Angebote, verfolgt aber eine strikte Preisuntergrenze.  
-        Deine Angebote beeinflussen das Verhalten des Verkäufers direkt – 
-        insbesondere das <b>Risiko eines vorzeitigen Abbruchs</b>.
-      </p>
+      <p>Du verhandelst über den Verkaufspreis, der Verkäufer besitzt jedoch eine klare Preisuntergrenze.</p>
 
-      <p class="muted"><b>Hinweis:</b><br>
-        Die Verhandlung dauert zufällig <b>8–12 Runden</b>.  
-        Unangemessen niedrige oder kaum geänderte Angebote können die 
-        <b>Abbruchwahrscheinlichkeit</b> erhöhen.
+      <p class="muted"><b>Hinweis:</b>  
+        Die Verhandlung dauert zufällig 8–12 Runden.  
+        Dein Verhalten beeinflusst das <b>Abbruchsrisiko</b>:
+        unangemessen niedrige oder kaum veränderte Angebote erhöhen die Gefahr,
+        dass der Verkäufer die Verhandlung <b>vorzeitig beendet</b>.
       </p>
 
       <label class="consent">
@@ -273,10 +276,6 @@ function viewVignette() {
 }
 
 
-
-/* ============================================================
-   VERHANDLUNGSVERLAUF-TABELLE
-============================================================ */
 
 function renderHistory() {
   if (!state.history.length) return "";
@@ -307,49 +306,7 @@ function renderHistory() {
 
 
 /* ============================================================
-   ÜBERGANGSSCREEN
-============================================================ */
-
-function viewThink(next) {
-  app.innerHTML = `
-    <div class="card center">
-      <h1 class="pulse">Die Verkäuferseite überlegt ...</h1>
-    </div>
-  `;
-  setTimeout(next, randInt(600, 1100));
-}
-
-
-
-/* ============================================================
-   ACCEPT HELPER
-============================================================ */
-
-function acceptAndFinish(num, prevOffer) {
-
-  state.history.push({
-    runde: state.runde,
-    algo_offer: prevOffer,
-    proband_counter: num,
-    accepted: true
-  });
-
-  logRound({
-    runde: state.runde,
-    algo_offer: prevOffer,
-    proband_counter: num,
-    accepted: true,
-    finished: true,
-    deal_price: num
-  });
-
-  finish(true, num);
-}
-
-
-
-/* ============================================================
-   VERHANDLUNGSSCREEN — mit Live-Abbruchanzeige
+   VERHANDLUNGSSCREEN (History-Fix)
 ============================================================ */
 
 function viewNegotiate(errorMsg = "") {
@@ -387,10 +344,12 @@ function viewNegotiate(errorMsg = "") {
       <button id="sendBtn">Gegenangebot senden</button>
       <button id="acceptBtn" class="ghost">Annehmen</button>
 
+      <div id="historyBox">
+        ${renderHistory()}
+      </div>
+
       ${state.warningText ? `<p class="muted" style="color:#b91c1c">${state.warningText}</p>` : ""}
       ${errorMsg ? `<p class="muted" style="color:red">${errorMsg}</p>` : ""}
-
-      ${renderHistory()}
     </div>
   `;
 
@@ -414,6 +373,7 @@ function viewNegotiate(errorMsg = "") {
 ============================================================ */
 
 function handleSubmit(valRaw) {
+
   const val = valRaw.trim().replace(",", ".");
   const num = Number(val);
 
@@ -422,7 +382,7 @@ function handleSubmit(valRaw) {
     return;
   }
 
-  // kein niedrigeres Angebot
+  // Kein niedrigeres Angebot als zuvor
   if (state.history.length > 0) {
     const last = state.history[state.history.length - 1].proband_counter;
     if (last != null && num < last) {
@@ -523,7 +483,6 @@ function handleSubmit(valRaw) {
 ============================================================ */
 
 function viewDecision() {
-
   app.innerHTML = `
     <div class="card">
       <h1>Letzte Runde</h1>
@@ -535,7 +494,7 @@ function viewDecision() {
       <button id="acceptBtn">Annehmen</button>
       <button id="declineBtn" class="ghost">Ablehnen</button>
 
-      ${renderHistory()}
+      <div id="historyBox">${renderHistory()}</div>
     </div>
   `;
 
@@ -577,7 +536,7 @@ function finish(accepted, dealPrice) {
           : "Keine Einigung erzielt."
       }</p>
 
-      ${renderHistory()}
+      <div id="historyBox">${renderHistory()}</div>
 
       <button id="restartBtn">Neue Verhandlung</button>
     </div>
@@ -596,13 +555,8 @@ function finish(accepted, dealPrice) {
 ============================================================ */
 
 viewVignette();
-}
-
-
-
-/* ============================================================
-   INIT
 ============================================================ */
 
 viewVignette();
+
 
