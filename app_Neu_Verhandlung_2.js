@@ -59,7 +59,6 @@ function newState() {
 
     scale: f,
 
-    // ALLES GERUNDET
     initial_offer: roundEuro(baseStart * f),
     min_price:     roundEuro(baseMin   * f),
     current_offer: roundEuro(baseStart * f),
@@ -102,7 +101,7 @@ function shouldAccept(userOffer) {
 
 
 /* ============================================================
-   NEUER VERHANDLUNGSSTIL MIT RUNDUNG
+   PREISUPDATE (VERKÄUFER)
 ============================================================ */
 
 function computeNextOffer(userOffer) {
@@ -161,42 +160,40 @@ function getWarning(userOffer) {
 
 
 /* ============================================================
-   RISIKO-SYSTEM (ALLE BETRÄGE GERUNDET)
+   RISIKO-SYSTEM (NEU: 1500-SOFORT-ABBRUCH + DIFFERENZMODELL)
 ============================================================ */
 
-function abortProbability(userOffer) {
-  userOffer = roundEuro(userOffer);
-
+// Risiko basierend NUR auf der Differenz
+function abortProbability(diff) {
+  diff = roundEuro(diff);
   const f = state.scale;
-  const s = state.current_offer;
-  const diff = Math.abs(s - userOffer);
 
   let chance = 0;
 
-  if (userOffer < roundEuro(1500 * f)) return 100;
+  if (diff >= roundEuro(1000 * f)) chance += 40;
+  else if (diff >= roundEuro(750 * f)) chance += 30;
+  else if (diff >= roundEuro(500 * f)) chance += 20;
+  else if (diff >= roundEuro(250 * f)) chance += 10;
+  else if (diff >= roundEuro(100 * f)) chance += 5;
 
-  if (userOffer < roundEuro(2250 * f)) chance += randInt(20, 40);
-
-  if (diff < roundEuro(50 * f)) chance += 35;
-  else if (diff < roundEuro(100 * f)) chance += 25;
-  else if (diff < roundEuro(150 * f)) chance += 15;
-  else if (diff < roundEuro(250 * f)) chance += 5;
-  else chance -= 5;
-
-  return Math.min(Math.max(chance, 0), 95);
+  return Math.min(Math.max(chance, 0), 100);
 }
 
 
-
+// maybeAbort: berücksichtigt 1500-Regel und dann Risiko
 function maybeAbort(userOffer) {
-  const chance = abortProbability(userOffer);
-  const roll = randInt(1, 100);
 
-  if (roll <= chance) {
+  const f = state.scale;
+  const seller = state.current_offer;
+  const buyer = roundEuro(userOffer);
+
+  // 1) SOFORTABBRUCH
+  if (buyer < roundEuro(1500 * f)) {
+
     logRound({
       runde: state.runde,
-      algo_offer: state.current_offer,
-      proband_counter: roundEuro(userOffer),
+      algo_offer: seller,
+      proband_counter: buyer,
       accepted: false,
       finished: true,
       deal_price: ""
@@ -204,8 +201,30 @@ function maybeAbort(userOffer) {
 
     state.finished = true;
     state.accepted = false;
+    viewAbort(100);
 
+    return true;
+  }
+
+  // 2) Risiko nach Differenz
+  const diff = Math.abs(seller - buyer);
+  const chance = abortProbability(diff);
+  const roll = randInt(1, 100);
+
+  if (roll <= chance) {
+    logRound({
+      runde: state.runde,
+      algo_offer: seller,
+      proband_counter: buyer,
+      accepted: false,
+      finished: true,
+      deal_price: ""
+    });
+
+    state.finished = true;
+    state.accepted = false;
     viewAbort(chance);
+
     return true;
   }
 
@@ -319,7 +338,7 @@ function viewVignette() {
       <p class="muted">Zu kleine Schritte oder sehr niedrige Angebote erhöhen das Abbruchrisiko.</p>
 
       <label class="consent">
-        <input id="consent" type="checkbox"> 
+        <input id="consent" type="checkbox">
         <span>Ich stimme der anonymen Speicherung zu.</span>
       </label>
 
@@ -338,9 +357,15 @@ function viewVignette() {
 function viewNegotiate(errorMsg = "") {
 
   const last = state.history[state.history.length - 1];
-  const lastOffer = last ? last.proband_counter : state.current_offer;
+  const seller = state.current_offer;
+  const buyer = last ? last.proband_counter : seller;
 
-  const abortChance = abortProbability(lastOffer);
+  const diff = Math.abs(seller - buyer);
+
+  let abortChance =
+    buyer < roundEuro(1500 * state.scale)
+      ? 100
+      : abortProbability(diff);
 
   let color = "#16a34a";
   if (abortChance > 50) color = "#ea580c";
@@ -383,7 +408,7 @@ function viewNegotiate(errorMsg = "") {
 
 
 /* ============================================================
-   HANDLE SUBMIT (MIT RUNDUNG)
+   HANDLE SUBMIT (MIT RUNDUNG + 1500-CHECK)
 ============================================================ */
 
 function handleSubmit(raw) {
