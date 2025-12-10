@@ -14,7 +14,7 @@ const app = document.getElementById("app");
 
 
 /* ============================================================
-   DIMENSIONSSYSTEM (AUS CODE 1)
+   DIMENSIONSSYSTEM
 ============================================================ */
 
 const DIM_FACTORS = [1.0, 1.3, 1.5];
@@ -36,14 +36,14 @@ function nextDimension() {
 
 
 /* ============================================================
-   SPIELZUSTAND (Preislogik bleibt unverändert!)
+   SPIELZUSTAND
 ============================================================ */
 
 function newState() {
   const f = nextDimension();
 
   const baseStart = 5500;
-  const baseMin   = 4000;
+  const baseMin   = 3500;    // KORRIGIERT – echte Schmerzgrenze
   const baseStep  = 300;
 
   return {
@@ -56,7 +56,9 @@ function newState() {
     initial_offer: round50(baseStart * f),
     min_price:     round50(baseMin   * f),
     current_offer: round50(baseStart * f),
-    step_amount:   round50(baseStep  * f),
+
+    // der bisherige lineare step wird weiter unten überschrieben
+    step_amount:   round50(baseStep * f),
 
     history: [],
     accepted: false,
@@ -72,7 +74,7 @@ let state = newState();
 
 
 /* ============================================================
- D – AUTO-ACCEPT REGELN AUS CODE 1 (vollständig)
+   OPTION A – AUTO-ACCEPT
 ============================================================ */
 
 function shouldAccept(userOffer) {
@@ -81,10 +83,11 @@ function shouldAccept(userOffer) {
 
   const diffPerc = Math.abs(s - userOffer) / s;
 
-  if (userOffer >= s) return true;               // Käufer überbietet
-  if (diffPerc <= 0.05) return true;            // innerhalb 5%
-  if (userOffer >= 5000 * f) return true;       // sehr gutes Angebot
-  if (state.max_runden - state.runde <= 1 && userOffer >= state.min_price) return true;
+  if (userOffer >= s) return true;
+  if (diffPerc <= 0.05) return true;
+  if (userOffer >= 5000 * f) return true;
+  if (state.max_runden - state.runde <= 1 && userOffer >= state.min_price)
+    return true;
 
   return false;
 }
@@ -92,26 +95,69 @@ function shouldAccept(userOffer) {
 
 
 /* ============================================================
-   PREISBERECHNUNG (NICHT VERÄNDERT!)
+   NEUER VERHANDLUNGSSTIL – KONVERGENZ ZUR SCHMERZGRENZE
 ============================================================ */
 
+/*
+  Neue Stufen:
+  Runde 1: –1000
+  Runde 2: –500
+  Runde 3: –250
+  Runde >=4: exponentielle Annäherung an min_price
+  Letzte Runde: (fast) exakt min_price
+*/
+
 function computeNextOffer(userOffer) {
+  const f = state.scale;
+  const r = state.runde;
+  const prev = state.current_offer;
+  const minP = state.min_price;
+
+  // Auto-Accept vorher prüfen
   if (shouldAccept(userOffer)) return userOffer;
 
-  let next = state.current_offer - state.step_amount;
-  if (next < state.min_price) next = state.min_price;
+  let next;
 
-  return round50(next);
+  if (r === 1) {
+    next = prev - 1000 * f;
+  } else if (r === 2) {
+    next = prev - 500 * f;
+  } else if (r === 3) {
+    next = prev - 250 * f;
+  }
+
+  else if (r === state.max_runden) {
+    // letzte Runde = direkt zur Schmerzgrenze
+    next = minP;
+  }
+
+  else {
+    // exponentielle / prozentuale Konvergenz
+    const distance = prev - minP;
+
+    // verkleinert die Schritte je näher wir an min_price kommen
+    const reduction = distance * 0.30;  // 30 % des Restabstandes
+    next = prev - reduction;
+  }
+
+  // auf 50er Schritte runden
+  next = round50(next);
+
+  // niemals unter Schmerzgrenze
+  if (next < minP) next = minP;
+
+  return next;
 }
 
 
 
 /* ============================================================
-   C – WARNUNGEN (Lowball + kleine Schritte) – skaliert
+   WARNUNGEN – skaliert
 ============================================================ */
 
 function getWarning(userOffer) {
   const f = state.scale;
+
   const LOWBALL_LIMIT = 2250 * f;
   const SMALL_STEP_LIMIT = 100 * f;
 
@@ -122,7 +168,6 @@ function getWarning(userOffer) {
 
   if (last && last.proband_counter != null) {
     const diff = userOffer - last.proband_counter;
-
     if (diff > 0 && diff <= SMALL_STEP_LIMIT)
       return `Ihre Erhöhung ist sehr klein (≤ ${eur(SMALL_STEP_LIMIT)}). Bitte machen Sie einen größeren Schritt.`;
   }
@@ -133,7 +178,7 @@ function getWarning(userOffer) {
 
 
 /* ============================================================
-   A – RISIKO-SYSTEM AUS CODE 1 (vollständig + skaliert)
+   ABBRUCHWAHRSCHEINLICHKEIT
 ============================================================ */
 
 function abortProbability(userOffer) {
@@ -143,33 +188,27 @@ function abortProbability(userOffer) {
 
   let chance = 0;
 
-  // EXTREM NIEDRIG
   if (userOffer < 1500 * f) return 100;
 
-  // LOWBALL
   if (userOffer < 2250 * f) chance += randInt(20, 40);
 
-  // SCHRITT-LOGIK (aus Code 1, aber skaliert!)
   if (diff < 50  * f) chance += 35;
   else if (diff < 100 * f) chance += 25;
   else if (diff < 150 * f) chance += 15;
   else if (diff < 250 * f) chance += 5;
-  else chance -= 5; // große Schritte = gut
+  else chance -= 5;
 
   return Math.min(Math.max(chance, 0), 95);
 }
 
 
 
-/* ============================================================
-   REALER ABBRUCH
-============================================================ */
-
 function maybeAbort(userOffer) {
   const chance = abortProbability(userOffer);
   const roll = randInt(1, 100);
 
   if (roll <= chance) {
+
     logRound({
       runde: state.runde,
       algo_offer: state.current_offer,
@@ -192,15 +231,10 @@ function maybeAbort(userOffer) {
 
 
 /* ============================================================
-   B – PATTERN-ERKENNUNG AUS CODE 1
+   PATTERN-ERKENNUNG
 ============================================================ */
 
 function updatePatternMessage() {
-  if (state.history.length < 3) {
-    state.patternMessage = "";
-    return;
-  }
-
   const f = state.scale;
   const limit = 2250 * f;
 
@@ -217,7 +251,6 @@ function updatePatternMessage() {
 
   for (let i = 1; i < counters.length; i++) {
     const diff = counters[i] - counters[i - 1];
-
     if (diff > 0 && diff <= 100 * f) chain++;
     else chain = 1;
   }
@@ -248,7 +281,7 @@ function logRound(row) {
 
 
 /* ============================================================
-   HISTORY RENDER
+   RENDERING
 ============================================================ */
 
 function renderHistory() {
@@ -273,8 +306,26 @@ function renderHistory() {
 
 
 /* ============================================================
-   E – VIGNETTE AUS CODE 1
+   SCREENS
 ============================================================ */
+
+function viewAbort(chance) {
+  app.innerHTML = `
+    <div class="card">
+      <h1>Verhandlung abgebrochen</h1>
+      <p>Abbruchwahrscheinlichkeit: <b>${chance}%</b></p>
+      ${renderHistory()}
+      <button id="restartBtn">Neu starten</button>
+    </div>
+  `;
+
+  document.getElementById("restartBtn").onclick = () => {
+    state = newState();
+    viewVignette();
+  };
+}
+
+
 
 function viewVignette() {
   app.innerHTML = `
@@ -282,29 +333,24 @@ function viewVignette() {
       <h1>Designer-Verkaufsmesse</h1>
 
       <p>
-        Sie verhandeln mit einem Verkäufer über eine hochwertige
-        <b>Designer-Ledercouch</b>.  
-        Vergleichbare Modelle kosten zwischen <b>2.500 € und 10.000 €</b>.
+        Sie verhandeln über eine hochwertige <b>Designer-Ledercouch</b>.
+        Vergleichbare Modelle kosten zwischen 2.500 € und 10.000 €.
       </p>
 
       <p class="muted">
-        Die Verhandlung dauert zufällig 8–12 Runden.  
-        Zu niedrige Angebote oder sehr kleine Schritte können das Abbruchrisiko erhöhen.
+        Zu niedrige Angebote oder sehr kleine Schritte erhöhen das Abbruchrisiko.
       </p>
 
-      <label>
-        <input id="consent" type="checkbox"> Ich stimme der anonymen Datenspeicherung zu.
-      </label>
-
+      <label><input id="consent" type="checkbox"> Ich stimme der anonymen Speicherung zu.</label>
       <button id="startBtn" disabled>Verhandlung starten</button>
     </div>
   `;
 
-  const c = document.getElementById("consent");
-  const b = document.getElementById("startBtn");
+  document.getElementById("consent").onchange =
+    e => document.getElementById("startBtn").disabled = !e.target.checked;
 
-  c.onchange = () => b.disabled = !c.checked;
-  b.onclick = () => { state = newState(); viewNegotiate(); };
+  document.getElementById("startBtn").onclick =
+    () => { state = newState(); viewNegotiate(); };
 }
 
 
@@ -316,7 +362,6 @@ function viewVignette() {
 function viewNegotiate(errorMsg = "") {
   const last = state.history[state.history.length - 1];
   const lastOffer = last ? last.proband_counter : state.current_offer;
-
   const abortChance = abortProbability(lastOffer);
 
   let color = "#16a34a";
@@ -364,12 +409,10 @@ function viewNegotiate(errorMsg = "") {
 ============================================================ */
 
 function handleSubmit(raw) {
-
   const num = Number(raw);
   if (!Number.isFinite(num) || num <= 0)
     return viewNegotiate("Bitte eine gültige Zahl eingeben.");
 
-  // keine rückwärtsgerichteten Angebote
   if (state.history.length > 0) {
     const last = state.history[state.history.length - 1].proband_counter;
     if (last && num < last)
@@ -379,14 +422,7 @@ function handleSubmit(raw) {
   state.warningText = getWarning(num);
 
   if (shouldAccept(num)) {
-    logRound({
-      runde: state.runde,
-      algo_offer: state.current_offer,
-      proband_counter: num,
-      accepted: true,
-      finished: true,
-      deal_price: num
-    });
+    logRound({ runde: state.runde, algo_offer: state.current_offer, proband_counter: num, accepted: true, finished: true, deal_price: num });
     return finish(true, num);
   }
 
@@ -451,7 +487,6 @@ function viewDecision() {
 ============================================================ */
 
 function finish(accepted, dealPrice) {
-
   state.accepted = accepted;
   state.finished = true;
   state.deal_price = dealPrice;
@@ -469,9 +504,7 @@ function finish(accepted, dealPrice) {
     <div class="card">
       <h1>Verhandlung beendet</h1>
       <p>${accepted ? `Einigung bei <b>${eur(dealPrice)}</b>` : "Keine Einigung."}</p>
-
       ${renderHistory()}
-
       <button id="restartBtn">Neu starten</button>
     </div>
   `;
