@@ -440,3 +440,4 @@ function finish(accepted, dealPrice) {
 ============================================================ */
 
 viewVignette();
+
