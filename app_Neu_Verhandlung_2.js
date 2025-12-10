@@ -2,7 +2,6 @@
    HILFSFUNKTIONEN
 ============================================================ */
 
-// ZENTRALE RUNDEFUNKTION: ALLE BETRÄGE AUF GANZE EURO
 const roundEuro = n => Math.round(Number(n));
 
 const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
@@ -68,7 +67,8 @@ function newState() {
     finished: false,
 
     warningText: "",
-    patternMessage: ""
+    patternMessage: "",
+    last_abort_chance: null
   };
 }
 
@@ -77,7 +77,7 @@ let state = newState();
 
 
 /* ============================================================
-   AUTO-ACCEPT LOGIK
+   AUTO-ACCEPT
 ============================================================ */
 
 function shouldAccept(userOffer) {
@@ -101,7 +101,7 @@ function shouldAccept(userOffer) {
 
 
 /* ============================================================
-   PREISUPDATE (VERKÄUFER)
+   VERKÄUFERLOGIK
 ============================================================ */
 
 function computeNextOffer(userOffer) {
@@ -146,12 +146,12 @@ function getWarning(userOffer) {
   const last = state.history[state.history.length - 1];
 
   if (userOffer < LOWBALL_LIMIT)
-    return `Ihr Angebot liegt deutlich unter dem akzeptablen Bereich (${eur(LOWBALL_LIMIT)}).`;
+    return `Ihr Angebot liegt deutlich unter dem akzeptablen Bereich.`;
 
   if (last && last.proband_counter != null) {
     const diff = userOffer - last.proband_counter;
     if (diff > 0 && diff <= SMALL_STEP_LIMIT)
-      return `Ihre Erhöhung ist sehr klein (≤ ${eur(SMALL_STEP_LIMIT)}). Bitte machen Sie einen größeren Schritt.`;
+      return `Ihre Erhöhung ist sehr klein. Bitte machen Sie einen größeren Schritt.`;
   }
 
   return "";
@@ -160,10 +160,10 @@ function getWarning(userOffer) {
 
 
 /* ============================================================
-   RISIKO-SYSTEM (NEU: 1500-SOFORT-ABBRUCH + DIFFERENZMODELL)
+   RISIKO-SYSTEM (DIFFERENZMODELL + SOFORT-ABBRUCH < 1500*f)
 ============================================================ */
 
-// Risiko basierend nur auf der Differenz
+// Risiko aus Differenz
 function abortProbability(diff) {
   diff = roundEuro(diff);
   const f = state.scale;
@@ -176,20 +176,19 @@ function abortProbability(diff) {
   else if (diff >= roundEuro(250 * f)) chance += 10;
   else if (diff >= roundEuro(100 * f)) chance += 5;
 
-  return Math.min(Math.max(chance, 0), 100);
+  return Math.min(chance, 100);
 }
 
-
-// maybeAbort: berücksichtigt 1500-Regel und Risiko
 function maybeAbort(userOffer) {
-
   const f = state.scale;
   const seller = state.current_offer;
   const buyer = roundEuro(userOffer);
 
-  // 1) SOFORTABBRUCH
+  // 1) Sofortabbruch
   if (buyer < roundEuro(1500 * f)) {
 
+    state.last_abort_chance = 100;
+
     logRound({
       runde: state.runde,
       algo_offer: seller,
@@ -201,17 +200,17 @@ function maybeAbort(userOffer) {
 
     state.finished = true;
     state.accepted = false;
-    viewAbort(100);
-
-    return true;
+    return viewAbort(100);
   }
 
-  // 2) Risiko nach Differenz
+  // 2) Reguläre Wahrscheinlichkeit
   const diff = Math.abs(seller - buyer);
   const chance = abortProbability(diff);
-  const roll = randInt(1, 100);
+  state.last_abort_chance = chance;
 
+  const roll = randInt(1, 100);
   if (roll <= chance) {
+
     logRound({
       runde: state.runde,
       algo_offer: seller,
@@ -223,9 +222,7 @@ function maybeAbort(userOffer) {
 
     state.finished = true;
     state.accepted = false;
-    viewAbort(chance);
-
-    return true;
+    return viewAbort(chance);
   }
 
   return false;
@@ -260,7 +257,7 @@ function updatePatternMessage() {
 
   state.patternMessage =
     chain >= 3
-      ? "Sie bewegen sich nur in sehr kleinen Schritten. Bitte kommen Sie etwas entgegen."
+      ? "Mit solchen kleinen Erhöhungen wird das schwierig. Bitte kommen Sie etwas entgegen."
       : "";
 }
 
@@ -284,7 +281,7 @@ function logRound(row) {
 
 
 /* ============================================================
-   HISTORY RENDER
+   VERLAUF RENDER
 ============================================================ */
 
 function renderHistory() {
@@ -293,7 +290,13 @@ function renderHistory() {
   return `
     <h2>Verlauf</h2>
     <table>
-      <thead><tr><th>R</th><th>Verkäufer</th><th>Du</th></tr></thead>
+      <thead>
+        <tr>
+          <th>Runde</th>
+          <th>Angebot Verkäufer</th>
+          <th>Gegenangebot</th>
+        </tr>
+      </thead>
       <tbody>
         ${state.history.map(h => `
           <tr>
@@ -314,12 +317,17 @@ function renderHistory() {
 
 function viewAbort(chance) {
   app.innerHTML = `
-    <div class="card">
-      <h1>Verhandlung abgebrochen</h1>
-      <p>Abbruchwahrscheinlichkeit: <b>${chance}%</b></p>
-      ${renderHistory()}
-      <button id="restartBtn">Neu starten</button>
+    <h1>Verhandlung abgebrochen</h1>
+    <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
+
+    <div class="card" style="padding:16px;border:1px dashed var(--accent);">
+      <strong>Die Verkäuferseite hat die Verhandlung beendet.</strong>
+      <p class="muted">Abbruchwahrscheinlichkeit in dieser Runde: ${chance}%</p>
     </div>
+
+    <button id="restartBtn">Neue Verhandlung</button>
+
+    ${renderHistory()}
   `;
 
   document.getElementById("restartBtn").onclick = () => {
@@ -332,22 +340,25 @@ function viewAbort(chance) {
 
 function viewVignette() {
   app.innerHTML = `
-    <div class="card">
-      <h1>Designer-Verkaufsmesse</h1>
-      <p>Sie verhandeln über eine hochwertige <b>Designer-Ledercouch</b>.</p>
-      <p class="muted">Zu kleine Schritte oder sehr niedrige Angebote erhöhen das Abbruchrisiko.</p>
+    <h1>Designer-Verkaufsmesse</h1>
+    <p class="muted">Stelle dir folgende Situation vor:</p>
 
-      <label class="consent">
-        <input id="consent" type="checkbox">
-        <span>Ich stimme der anonymen Speicherung zu.</span>
-      </label>
+    <p>
+      Ein Verkäufer bietet eine hochwertige <b>Designer-Ledercouch</b> an.
+      Unangemessen niedrige oder kaum veränderte Angebote erhöhen das Abbruchrisiko.
+    </p>
 
-      <button id="startBtn" disabled>Starten</button>
-    </div>
+    <label class="consent">
+      <input id="consent" type="checkbox">
+      <span>Ich stimme der anonymen Speicherung zu.</span>
+    </label>
+
+    <button id="startBtn" disabled>Verhandlung starten</button>
   `;
 
   const c = document.getElementById("consent");
   const b = document.getElementById("startBtn");
+
   c.onchange = () => b.disabled = !c.checked;
   b.onclick = () => { state = newState(); viewNegotiate(); };
 }
@@ -367,43 +378,59 @@ function viewNegotiate(errorMsg = "") {
       ? 100
       : abortProbability(diff);
 
+  state.last_abort_chance = abortChance;
+
   let color = "#16a34a";
   if (abortChance > 50) color = "#ea580c";
   else if (abortChance > 25) color = "#eab308";
 
   app.innerHTML = `
-    <div class="card">
-      <h1>Verkaufsverhandlung</h1>
+    <h1>Verkaufsverhandlung</h1>
+    <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
 
-      <div class="card">
+    <div class="grid">
+
+      <div class="card" style="padding:16px;border:1px dashed var(--accent);">
         <strong>Aktuelles Angebot:</strong> ${eur(state.current_offer)}
       </div>
 
-      <div style="border-left:6px solid ${color}; padding:10px; background:${color}22;">
+      <div style="
+        background:${color}22;
+        border-left:6px solid ${color};
+        padding:10px;
+        border-radius:8px;
+        margin-bottom:10px;">
         <b style="color:${color};">Abbruchwahrscheinlichkeit:</b>
-        <span>${abortChance}%</span>
+        <span style="color:${color};font-weight:600;">
+          ${abortChance}%
+        </span>
       </div>
 
-      <label>Dein Gegenangebot:</label>
-      <input id="counter" type="number">
+      <label for="counter">Dein Gegenangebot (€)</label>
+      <div class="row">
+        <input id="counter" type="number" step="1" min="0" />
+        <button id="sendBtn">Gegenangebot senden</button>
+      </div>
 
-      <button id="sendBtn">Senden</button>
-      <button id="acceptBtn" class="ghost">Annehmen</button>
-
-      ${state.warningText ? `<p style="color:#b91c1c">${state.warningText}</p>` : ""}
-      ${state.patternMessage ? `<p class="muted">${state.patternMessage}</p>` : ""}
-      ${errorMsg ? `<p style="color:red">${errorMsg}</p>` : ""}
-
-      ${renderHistory()}
+      <button id="acceptBtn" class="ghost">Angebot annehmen</button>
     </div>
+
+    ${renderHistory()}
+    ${state.patternMessage ? `<p class="info">${state.patternMessage}</p>` : ""}
+    ${state.warningText ? `<p class="error" style="color:#b91c1c">${state.warningText}</p>` : ""}
+    ${errorMsg ? `<p class="error" style="color:red">${errorMsg}</p>` : ""}
   `;
 
   document.getElementById("sendBtn").onclick =
     () => handleSubmit(document.getElementById("counter").value);
 
+  document.getElementById("counter").onkeydown =
+    e => { if (e.key === "Enter") handleSubmit(e.target.value); };
+
   document.getElementById("acceptBtn").onclick =
     () => finish(true, state.current_offer);
 }
+
 
 
 
@@ -473,15 +500,17 @@ function handleSubmit(raw) {
 
 function viewDecision() {
   app.innerHTML = `
-    <div class="card">
-      <h1>Letzte Runde</h1>
-      <p>Letztes Angebot: ${eur(state.current_offer)}</p>
+    <h1>Letzte Runde</h1>
+    <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
 
-      <button id="acceptBtn">Annehmen</button>
-      <button id="declineBtn" class="ghost">Ablehnen</button>
-
-      ${renderHistory()}
+    <div class="card" style="padding:16px;border:1px dashed var(--accent);">
+      <strong>Letztes Angebot:</strong> ${eur(state.current_offer)}
     </div>
+
+    <button id="acceptBtn">Annehmen</button>
+    <button id="declineBtn" class="ghost">Ablehnen</button>
+
+    ${renderHistory()}
   `;
 
   document.getElementById("acceptBtn").onclick =
@@ -490,6 +519,7 @@ function viewDecision() {
   document.getElementById("declineBtn").onclick =
     () => finish(false, null);
 }
+
 
 
 
@@ -516,14 +546,19 @@ function finish(accepted, dealPrice) {
   });
 
   app.innerHTML = `
-    <div class="card">
-      <h1>Verhandlung beendet</h1>
-      <p>${accepted ? `Einigung bei <b>${eur(dealPrice)}</b>` : "Keine Einigung."}</p>
+    <h1>Verhandlung abgeschlossen</h1>
+    <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
 
-      ${renderHistory()}
-
-      <button id="restartBtn">Neu starten</button>
+    <div class="card" style="padding:16px;border:1px dashed var(--accent);">
+      <strong>Ergebnis:</strong>
+      ${accepted
+        ? `Einigung bei ${eur(dealPrice)}`
+        : `Keine Einigung.`}
     </div>
+
+    <button id="restartBtn">Neue Verhandlung</button>
+
+    ${renderHistory()}
   `;
 
   document.getElementById("restartBtn").onclick = () => {
@@ -539,6 +574,3 @@ function finish(accepted, dealPrice) {
 ============================================================ */
 
 viewVignette();
-
-
-
