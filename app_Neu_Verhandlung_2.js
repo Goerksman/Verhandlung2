@@ -163,7 +163,7 @@ function getWarning(userOffer) {
    RISIKO-SYSTEM (NEU: 1500-SOFORT-ABBRUCH + DIFFERENZMODELL)
 ============================================================ */
 
-// Risiko basierend NUR auf der Differenz
+// Risiko basierend nur auf der Differenz
 function abortProbability(diff) {
   diff = roundEuro(diff);
   const f = state.scale;
@@ -180,7 +180,7 @@ function abortProbability(diff) {
 }
 
 
-// maybeAbort: berücksichtigt 1500-Regel und dann Risiko
+// maybeAbort: berücksichtigt 1500-Regel und Risiko
 function maybeAbort(userOffer) {
 
   const f = state.scale;
@@ -408,7 +408,7 @@ function viewNegotiate(errorMsg = "") {
 
 
 /* ============================================================
-   HANDLE SUBMIT (MIT RUNDUNG + 1500-CHECK)
+   HANDLE SUBMIT
 ============================================================ */
 
 function handleSubmit(raw) {
@@ -539,5 +539,6 @@ function finish(accepted, dealPrice) {
 ============================================================ */
 
 viewVignette();
+
 
 
