@@ -7,8 +7,6 @@ const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const eur = n =>
   new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
 
-const round50 = n => Math.round(n / 50) * 50;
-
 const app = document.getElementById("app");
 
 
@@ -43,8 +41,7 @@ function newState() {
   const f = nextDimension();
 
   const baseStart = 5500;
-  const baseMin   = 3500;    // KORRIGIERT – echte Schmerzgrenze
-  const baseStep  = 300;
+  const baseMin   = 3500;   // <-- SCHMERZGRENZE 3500 !!!
 
   return {
     participant_id: crypto.randomUUID?.() || "v_" + Date.now(),
@@ -53,12 +50,9 @@ function newState() {
     max_runden: randInt(8, 12),
 
     scale: f,
-    initial_offer: round50(baseStart * f),
-    min_price:     round50(baseMin   * f),
-    current_offer: round50(baseStart * f),
-
-    // der bisherige lineare step wird weiter unten überschrieben
-    step_amount:   round50(baseStep * f),
+    initial_offer: baseStart * f,
+    min_price:     baseMin   * f,
+    current_offer: baseStart * f,
 
     history: [],
     accepted: false,
@@ -74,7 +68,7 @@ let state = newState();
 
 
 /* ============================================================
-   OPTION A – AUTO-ACCEPT
+   OPTION A — Auto-Accept Logik
 ============================================================ */
 
 function shouldAccept(userOffer) {
@@ -83,9 +77,11 @@ function shouldAccept(userOffer) {
 
   const diffPerc = Math.abs(s - userOffer) / s;
 
-  if (userOffer >= s) return true;
-  if (diffPerc <= 0.05) return true;
-  if (userOffer >= 5000 * f) return true;
+  if (userOffer >= s) return true;           // Käufer überbietet
+  if (diffPerc <= 0.05) return true;         // innerhalb 5%
+  if (userOffer >= 5000 * f) return true;    // sehr gutes Angebot
+
+  // Letzte Runde → Verkäufer akzeptiert, wenn Mindestpreis erreicht wurde
   if (state.max_runden - state.runde <= 1 && userOffer >= state.min_price)
     return true;
 
@@ -95,56 +91,37 @@ function shouldAccept(userOffer) {
 
 
 /* ============================================================
-   NEUER VERHANDLUNGSSTIL – KONVERGENZ ZUR SCHMERZGRENZE
+   NEUER VERHANDLUNGSSTIL
+   Runde 1: -1000 * f
+   Runde 2: -500  * f
+   Runde 3: -250  * f
+   Runde >= 4: Konvergenz auf Schmerzgrenze (40 % näher dran)
 ============================================================ */
 
-/*
-  Neue Stufen:
-  Runde 1: –1000
-  Runde 2: –500
-  Runde 3: –250
-  Runde >=4: exponentielle Annäherung an min_price
-  Letzte Runde: (fast) exakt min_price
-*/
-
 function computeNextOffer(userOffer) {
+
+  if (shouldAccept(userOffer)) return userOffer;
+
   const f = state.scale;
   const r = state.runde;
-  const prev = state.current_offer;
-  const minP = state.min_price;
-
-  // Auto-Accept vorher prüfen
-  if (shouldAccept(userOffer)) return userOffer;
+  const min = state.min_price;
+  const curr = state.current_offer;
 
   let next;
 
   if (r === 1) {
-    next = prev - 1000 * f;
+    next = curr - (1000 * f);
   } else if (r === 2) {
-    next = prev - 500 * f;
+    next = curr - (500 * f);
   } else if (r === 3) {
-    next = prev - 250 * f;
+    next = curr - (250 * f);
+  } else {
+    // KONVERGENZ: 40 % Annäherung
+    next = curr - (curr - min) * 0.40;
   }
 
-  else if (r === state.max_runden) {
-    // letzte Runde = direkt zur Schmerzgrenze
-    next = minP;
-  }
-
-  else {
-    // exponentielle / prozentuale Konvergenz
-    const distance = prev - minP;
-
-    // verkleinert die Schritte je näher wir an min_price kommen
-    const reduction = distance * 0.30;  // 30 % des Restabstandes
-    next = prev - reduction;
-  }
-
-  // auf 50er Schritte runden
-  next = round50(next);
-
-  // niemals unter Schmerzgrenze
-  if (next < minP) next = minP;
+  // Nicht unter Mindestpreis fallen
+  if (next < min) next = min;
 
   return next;
 }
@@ -152,19 +129,18 @@ function computeNextOffer(userOffer) {
 
 
 /* ============================================================
-   WARNUNGEN – skaliert
+   WARNUNGEN (Lowball + kleine Schritte)
 ============================================================ */
 
 function getWarning(userOffer) {
   const f = state.scale;
-
   const LOWBALL_LIMIT = 2250 * f;
   const SMALL_STEP_LIMIT = 100 * f;
 
   const last = state.history[state.history.length - 1];
 
   if (userOffer < LOWBALL_LIMIT)
-    return `Ihr Angebot (${eur(userOffer)}) liegt deutlich unter dem akzeptablen Bereich (${eur(LOWBALL_LIMIT)}).`;
+    return `Ihr Angebot liegt deutlich unter dem akzeptablen Bereich (${eur(LOWBALL_LIMIT)}).`;
 
   if (last && last.proband_counter != null) {
     const diff = userOffer - last.proband_counter;
@@ -178,7 +154,7 @@ function getWarning(userOffer) {
 
 
 /* ============================================================
-   ABBRUCHWAHRSCHEINLICHKEIT
+   RISIKO-SYSTEM (skaliert)
 ============================================================ */
 
 function abortProbability(userOffer) {
@@ -192,7 +168,7 @@ function abortProbability(userOffer) {
 
   if (userOffer < 2250 * f) chance += randInt(20, 40);
 
-  if (diff < 50  * f) chance += 35;
+  if (diff < 50 * f) chance += 35;
   else if (diff < 100 * f) chance += 25;
   else if (diff < 150 * f) chance += 15;
   else if (diff < 250 * f) chance += 5;
@@ -208,7 +184,6 @@ function maybeAbort(userOffer) {
   const roll = randInt(1, 100);
 
   if (roll <= chance) {
-
     logRound({
       runde: state.runde,
       algo_offer: state.current_offer,
@@ -231,7 +206,7 @@ function maybeAbort(userOffer) {
 
 
 /* ============================================================
-   PATTERN-ERKENNUNG
+   PATTERNERKENNUNG – kleine Schritte hintereinander
 ============================================================ */
 
 function updatePatternMessage() {
@@ -281,7 +256,7 @@ function logRound(row) {
 
 
 /* ============================================================
-   RENDERING
+   HISTORY RENDER
 ============================================================ */
 
 function renderHistory() {
@@ -331,26 +306,19 @@ function viewVignette() {
   app.innerHTML = `
     <div class="card">
       <h1>Designer-Verkaufsmesse</h1>
-
-      <p>
-        Sie verhandeln über eine hochwertige <b>Designer-Ledercouch</b>.
-        Vergleichbare Modelle kosten zwischen 2.500 € und 10.000 €.
-      </p>
-
-      <p class="muted">
-        Zu niedrige Angebote oder sehr kleine Schritte erhöhen das Abbruchrisiko.
-      </p>
+      <p>Sie verhandeln über eine hochwertige <b>Designer-Ledercouch</b>.</p>
+      <p class="muted">Zu kleine Schritte oder sehr niedrige Angebote erhöhen das Abbruchrisiko.</p>
 
       <label><input id="consent" type="checkbox"> Ich stimme der anonymen Speicherung zu.</label>
-      <button id="startBtn" disabled>Verhandlung starten</button>
+      <button id="startBtn" disabled>Starten</button>
     </div>
   `;
 
-  document.getElementById("consent").onchange =
-    e => document.getElementById("startBtn").disabled = !e.target.checked;
+  const c = document.getElementById("consent");
+  const b = document.getElementById("startBtn");
 
-  document.getElementById("startBtn").onclick =
-    () => { state = newState(); viewNegotiate(); };
+  c.onchange = () => b.disabled = !c.checked;
+  b.onclick = () => { state = newState(); viewNegotiate(); };
 }
 
 
@@ -360,8 +328,10 @@ function viewVignette() {
 ============================================================ */
 
 function viewNegotiate(errorMsg = "") {
+
   const last = state.history[state.history.length - 1];
   const lastOffer = last ? last.proband_counter : state.current_offer;
+
   const abortChance = abortProbability(lastOffer);
 
   let color = "#16a34a";
@@ -409,6 +379,7 @@ function viewNegotiate(errorMsg = "") {
 ============================================================ */
 
 function handleSubmit(raw) {
+
   const num = Number(raw);
   if (!Number.isFinite(num) || num <= 0)
     return viewNegotiate("Bitte eine gültige Zahl eingeben.");
@@ -422,7 +393,14 @@ function handleSubmit(raw) {
   state.warningText = getWarning(num);
 
   if (shouldAccept(num)) {
-    logRound({ runde: state.runde, algo_offer: state.current_offer, proband_counter: num, accepted: true, finished: true, deal_price: num });
+    logRound({
+      runde: state.runde,
+      algo_offer: state.current_offer,
+      proband_counter: num,
+      accepted: true,
+      finished: true,
+      deal_price: num
+    });
     return finish(true, num);
   }
 
@@ -487,6 +465,7 @@ function viewDecision() {
 ============================================================ */
 
 function finish(accepted, dealPrice) {
+
   state.accepted = accepted;
   state.finished = true;
   state.deal_price = dealPrice;
@@ -504,7 +483,9 @@ function finish(accepted, dealPrice) {
     <div class="card">
       <h1>Verhandlung beendet</h1>
       <p>${accepted ? `Einigung bei <b>${eur(dealPrice)}</b>` : "Keine Einigung."}</p>
+
       ${renderHistory()}
+
       <button id="restartBtn">Neu starten</button>
     </div>
   `;
@@ -522,3 +503,4 @@ function finish(accepted, dealPrice) {
 ============================================================ */
 
 viewVignette();
+
