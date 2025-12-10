@@ -2,10 +2,18 @@
    HILFSFUNKTIONEN
 ============================================================ */
 
+// ZENTRALE RUNDEFUNKTION: ALLE BETRÄGE AUF GANZE EURO
+const roundEuro = n => Math.round(Number(n));
+
 const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 const eur = n =>
-  new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
+  new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(roundEuro(n));
 
 const app = document.getElementById("app");
 
@@ -41,7 +49,7 @@ function newState() {
   const f = nextDimension();
 
   const baseStart = 5500;
-  const baseMin   = 3500;   // <-- SCHMERZGRENZE 3500 !!!
+  const baseMin   = 3500;
 
   return {
     participant_id: crypto.randomUUID?.() || "v_" + Date.now(),
@@ -50,9 +58,11 @@ function newState() {
     max_runden: randInt(8, 12),
 
     scale: f,
-    initial_offer: baseStart * f,
-    min_price:     baseMin   * f,
-    current_offer: baseStart * f,
+
+    // ALLES GERUNDET
+    initial_offer: roundEuro(baseStart * f),
+    min_price:     roundEuro(baseMin   * f),
+    current_offer: roundEuro(baseStart * f),
 
     history: [],
     accepted: false,
@@ -68,20 +78,21 @@ let state = newState();
 
 
 /* ============================================================
-   OPTION A — Auto-Accept Logik
+   AUTO-ACCEPT LOGIK
 ============================================================ */
 
 function shouldAccept(userOffer) {
+  userOffer = roundEuro(userOffer);
+
   const s = state.current_offer;
   const f = state.scale;
 
   const diffPerc = Math.abs(s - userOffer) / s;
 
-  if (userOffer >= s) return true;           // Käufer überbietet
-  if (diffPerc <= 0.05) return true;         // innerhalb 5%
-  if (userOffer >= 5000 * f) return true;    // sehr gutes Angebot
+  if (userOffer >= s) return true;
+  if (diffPerc <= 0.05) return true;
+  if (userOffer >= roundEuro(5000 * f)) return true;
 
-  // Letzte Runde → Verkäufer akzeptiert, wenn Mindestpreis erreicht wurde
   if (state.max_runden - state.runde <= 1 && userOffer >= state.min_price)
     return true;
 
@@ -91,16 +102,12 @@ function shouldAccept(userOffer) {
 
 
 /* ============================================================
-   NEUER VERHANDLUNGSSTIL
-   Runde 1: -1000 * f
-   Runde 2: -500  * f
-   Runde 3: -250  * f
-   Runde >= 4: Konvergenz auf Schmerzgrenze (40 % näher dran)
+   NEUER VERHANDLUNGSSTIL MIT RUNDUNG
 ============================================================ */
 
 function computeNextOffer(userOffer) {
 
-  if (shouldAccept(userOffer)) return userOffer;
+  if (shouldAccept(userOffer)) return roundEuro(userOffer);
 
   const f = state.scale;
   const r = state.runde;
@@ -110,32 +117,32 @@ function computeNextOffer(userOffer) {
   let next;
 
   if (r === 1) {
-    next = curr - (1000 * f);
+    next = curr - roundEuro(1000 * f);
   } else if (r === 2) {
-    next = curr - (500 * f);
+    next = curr - roundEuro(500 * f);
   } else if (r === 3) {
-    next = curr - (250 * f);
+    next = curr - roundEuro(250 * f);
   } else {
-    // KONVERGENZ: 40 % Annäherung
     next = curr - (curr - min) * 0.40;
   }
 
-  // Nicht unter Mindestpreis fallen
   if (next < min) next = min;
 
-  return next;
+  return roundEuro(next);
 }
 
 
 
 /* ============================================================
-   WARNUNGEN (Lowball + kleine Schritte)
+   WARNUNGEN
 ============================================================ */
 
 function getWarning(userOffer) {
+  userOffer = roundEuro(userOffer);
+
   const f = state.scale;
-  const LOWBALL_LIMIT = 2250 * f;
-  const SMALL_STEP_LIMIT = 100 * f;
+  const LOWBALL_LIMIT = roundEuro(2250 * f);
+  const SMALL_STEP_LIMIT = roundEuro(100 * f);
 
   const last = state.history[state.history.length - 1];
 
@@ -154,24 +161,26 @@ function getWarning(userOffer) {
 
 
 /* ============================================================
-   RISIKO-SYSTEM (skaliert)
+   RISIKO-SYSTEM (ALLE BETRÄGE GERUNDET)
 ============================================================ */
 
 function abortProbability(userOffer) {
+  userOffer = roundEuro(userOffer);
+
   const f = state.scale;
   const s = state.current_offer;
   const diff = Math.abs(s - userOffer);
 
   let chance = 0;
 
-  if (userOffer < 1500 * f) return 100;
+  if (userOffer < roundEuro(1500 * f)) return 100;
 
-  if (userOffer < 2250 * f) chance += randInt(20, 40);
+  if (userOffer < roundEuro(2250 * f)) chance += randInt(20, 40);
 
-  if (diff < 50 * f) chance += 35;
-  else if (diff < 100 * f) chance += 25;
-  else if (diff < 150 * f) chance += 15;
-  else if (diff < 250 * f) chance += 5;
+  if (diff < roundEuro(50 * f)) chance += 35;
+  else if (diff < roundEuro(100 * f)) chance += 25;
+  else if (diff < roundEuro(150 * f)) chance += 15;
+  else if (diff < roundEuro(250 * f)) chance += 5;
   else chance -= 5;
 
   return Math.min(Math.max(chance, 0), 95);
@@ -187,7 +196,7 @@ function maybeAbort(userOffer) {
     logRound({
       runde: state.runde,
       algo_offer: state.current_offer,
-      proband_counter: userOffer,
+      proband_counter: roundEuro(userOffer),
       accepted: false,
       finished: true,
       deal_price: ""
@@ -206,12 +215,12 @@ function maybeAbort(userOffer) {
 
 
 /* ============================================================
-   PATTERNERKENNUNG – kleine Schritte hintereinander
+   PATTERNERKENNUNG
 ============================================================ */
 
 function updatePatternMessage() {
   const f = state.scale;
-  const limit = 2250 * f;
+  const limit = roundEuro(2250 * f);
 
   const counters = state.history
     .map(h => h.proband_counter)
@@ -226,7 +235,7 @@ function updatePatternMessage() {
 
   for (let i = 1; i < counters.length; i++) {
     const diff = counters[i] - counters[i - 1];
-    if (diff > 0 && diff <= 100 * f) chain++;
+    if (diff > 0 && diff <= roundEuro(100 * f)) chain++;
     else chain = 1;
   }
 
@@ -309,23 +318,22 @@ function viewVignette() {
       <p>Sie verhandeln über eine hochwertige <b>Designer-Ledercouch</b>.</p>
       <p class="muted">Zu kleine Schritte oder sehr niedrige Angebote erhöhen das Abbruchrisiko.</p>
 
-      <label><input id="consent" type="checkbox"> Ich stimme der anonymen Speicherung zu.</label>
+      <label class="consent">
+        <input id="consent" type="checkbox"> 
+        <span>Ich stimme der anonymen Speicherung zu.</span>
+      </label>
+
       <button id="startBtn" disabled>Starten</button>
     </div>
   `;
 
   const c = document.getElementById("consent");
   const b = document.getElementById("startBtn");
-
   c.onchange = () => b.disabled = !c.checked;
   b.onclick = () => { state = newState(); viewNegotiate(); };
 }
 
 
-
-/* ============================================================
-   VERHANDLUNGSSCREEN
-============================================================ */
 
 function viewNegotiate(errorMsg = "") {
 
@@ -375,12 +383,12 @@ function viewNegotiate(errorMsg = "") {
 
 
 /* ============================================================
-   HANDLE SUBMIT
+   HANDLE SUBMIT (MIT RUNDUNG)
 ============================================================ */
 
 function handleSubmit(raw) {
 
-  const num = Number(raw);
+  const num = roundEuro(Number(raw));
   if (!Number.isFinite(num) || num <= 0)
     return viewNegotiate("Bitte eine gültige Zahl eingeben.");
 
@@ -466,6 +474,9 @@ function viewDecision() {
 
 function finish(accepted, dealPrice) {
 
+  if (dealPrice != null)
+    dealPrice = roundEuro(dealPrice);
+
   state.accepted = accepted;
   state.finished = true;
   state.deal_price = dealPrice;
@@ -503,4 +514,5 @@ function finish(accepted, dealPrice) {
 ============================================================ */
 
 viewVignette();
+
 
