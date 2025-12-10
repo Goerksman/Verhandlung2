@@ -313,278 +313,377 @@ function renderHistory() {
    SCREENS – VERHANDLUNGSMASKE (SCREENSHOT VERSION!)
 ============================================================ */
 
-function viewAbort(chance) {
+function viewVignette(){
   app.innerHTML = `
-    <div class="card">
-      <h1>Verhandlung abgebrochen</h1>
-      <p>Abbruchwahrscheinlichkeit: <b>${chance}%</b></p>
+    <h1>Designer-Verkaufsmesse</h1>
+    <p class="muted">Stelle dir folgende Situation vor:</p>
+    <p>
+      Ein Verkäufer bietet eine <b>hochwertige Designer-Ledercouch</b> auf einer Möbelmesse an.
+      Vergleichbare Sofas liegen zwischen <b>2.500 €</b> und <b>10.000 €</b>.
+    </p>
+    <p>
+      Du verhandelst über den Verkaufspreis, aber der Verkäufer besitzt eine klare Preisuntergrenze.
+    </p>
+    <p class="muted">
+      <b>Hinweis:</b> Die Verhandlung dauert zufällig ${CONFIG.ROUNDS_MIN}–${CONFIG.ROUNDS_MAX} Runden.
+      Dein Verhalten beeinflusst das <b>Abbruchrisiko</b>.
+    </p>
 
-      ${renderHistory()}
-
-      <button id="restartBtn">Neu starten</button>
-    </div>
-  `;
-
-  document.getElementById("restartBtn").onclick = () => {
-    state = newState();
-    viewVignette();
-  };
-}
-
-
-
-function viewVignette() {
-  app.innerHTML = `
-    <div class="card">
-      <h1>Designer-Verkaufsmesse</h1>
-      <p>Sie verhandeln über eine Designer-Ledercouch.</p>
-
+    <div class="grid">
       <label class="consent">
-        <input id="consent" type="checkbox">
-        <span>Ich stimme der anonymen Speicherung zu.</span>
+        <input id="consent" type="checkbox" />
+        <span>Ich stimme zu, dass meine Eingaben anonym gespeichert werden.</span>
       </label>
-
-      <button id="startBtn" disabled>Verhandlung starten</button>
+      <div><button id="startBtn" disabled>Verhandlung starten</button></div>
     </div>
   `;
 
-  const c = document.getElementById("consent");
-  const b = document.getElementById("startBtn");
+  document.getElementById('consent').onchange =
+    () => document.getElementById('startBtn').disabled =
+      !document.getElementById('consent').checked;
 
-  c.onchange = () => (b.disabled = !c.checked);
-  b.onclick = () => {
+  document.getElementById('startBtn').onclick = () => {
     state = newState();
     viewNegotiate();
   };
 }
 
+function viewThink(next){
+  const delay = randInt(CONFIG.THINK_DELAY_MS_MIN, CONFIG.THINK_DELAY_MS_MAX);
+  app.innerHTML = `
+    <h1>Die Verkäuferseite überlegt<span class="pulse">…</span></h1>
+    <p class="muted">Bitte warten.</p>
+  `;
+  setTimeout(next, delay);
+}
 
+function historyTable(){
+  if (!state.history.length) return '';
+  const rows = state.history
+    .map(h => `
+      <tr>
+        <td>${h.runde}</td>
+        <td>${eur(h.algo_offer)}</td>
+        <td>${h.proband_counter != null && h.proband_counter !== '' ? eur(h.proband_counter) : '-'}</td>
+        <td>${h.accepted ? 'Ja' : 'Nein'}</td>
+      </tr>
+    `)
+    .join('');
 
-function viewNegotiate(errorMsg = "") {
+  return `
+    <h2>Verlauf</h2>
+    <table>
+      <thead>
+        <tr><th>Runde</th><th>Angebot Verkäufer</th><th>Gegenangebot</th><th>Angenommen?</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
 
-  const seller = state.current_offer;
+function viewAbort(chance){
+  app.innerHTML = `
+    <h1>Verhandlung abgebrochen</h1>
+    <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
 
-  let buyer;
-  if (state.history.length === 0)
-    buyer = seller;
-  else
-    buyer = state.history[state.history.length - 1].proband_counter;
+    <div class="card" style="padding:16px;border:1px dashed var(--accent);">
+      <strong>Die Verkäuferseite hat die Verhandlung beendet.</strong>
+      <p class="muted">Abbruchwahrscheinlichkeit in dieser Runde: ${chance}%</p>
+    </div>
 
-  let abortChance = state.last_abort_display; // OPTION 3
+    <button id="restartBtn">Neue Verhandlung</button>
+
+    ${historyTable()}
+  `;
+
+  document.getElementById('restartBtn').onclick = () => {
+    state = newState();
+    viewVignette();
+  };
+}
+
+/* ========================================================================== */
+/* Hauptscreen der Verhandlung                                                 */
+/* ========================================================================== */
+
+function viewNegotiate(errorMsg){
+  const abortChance = typeof state.last_abort_chance === 'number' ? state.last_abort_chance : null;
+
+  let color = '#16a34a';
+  if (abortChance !== null){
+    if (abortChance > 50) color = '#ea580c';
+    else if (abortChance > 25) color = '#eab308';
+  }
 
   app.innerHTML = `
     <h1>Verkaufsverhandlung</h1>
+    <p class="muted">Spieler-ID: ${window.playerId ?? '-'}</p>
     <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
 
-    <div class="card" style="border:1px dashed var(--accent);">
-      <strong>Aktuelles Angebot:</strong> ${eur(seller)}
+    <div class="grid">
+
+      <div class="card" style="padding:16px;border:1px dashed var(--accent);">
+        <strong>Aktuelles Angebot:</strong> ${eur(state.current_offer)}
+      </div>
+
+      <div style="
+        background:${color}22;
+        border-left:6px solid ${color};
+        padding:10px;
+        border-radius:8px;
+        margin-bottom:10px;">
+        <b style="color:${color};">Abbruchwahrscheinlichkeit:</b>
+        <span style="color:${color}; font-weight:600;">
+          ${abortChance !== null ? abortChance + '%' : '--'}
+        </span>
+      </div>
+
+      <label for="counter">Dein Gegenangebot (€)</label>
+      <div class="row">
+        <input id="counter" type="number" step="0.01" min="0" />
+        <button id="sendBtn">Gegenangebot senden</button>
+      </div>
+
+      <button id="acceptBtn" class="ghost">Angebot annehmen</button>
     </div>
 
-    <div id="abortBox" style="
-      background:#16a34a22;
-      border-left:6px solid #16a34a;
-      padding:10px;
-      border-radius:8px;
-    ">
-      <b id="abortLabel" style="color:#16a34a;">Abbruchwahrscheinlichkeit:</b>
-      <span id="abortValue" style="font-weight:600;color:#16a34a;">${abortChance}%</span>
-    </div>
-
-    <label for="counter">Dein Gegenangebot (€)</label>
-    <div class="row">
-      <input id="counter" type="number" step="1">
-      <button id="sendBtn">Senden</button>
-    </div>
-
-    <button id="acceptBtn" class="ghost">Angebot annehmen</button>
-
-    ${state.warningText ? `<p style="color:#b91c1c">${state.warningText}</p>` : ""}
-    ${state.patternMessage ? `<p class="muted">${state.patternMessage}</p>` : ""}
-    ${errorMsg ? `<p style="color:red">${errorMsg}</p>` : ""}
-
-    ${renderHistory()}
+    ${historyTable()}
+    ${state.patternMessage ? `<p class="info">${state.patternMessage}</p>` : ''}
+    ${errorMsg ? `<p class="error">${errorMsg}</p>` : ''}
   `;
 
-  const input = document.getElementById("counter");
+  const inputEl = document.getElementById('counter');
+  inputEl.onkeydown = e => { if (e.key === "Enter") handleSubmit(inputEl.value); };
+  document.getElementById('sendBtn').onclick = () => handleSubmit(inputEl.value);
 
-  // LIVE-UPDATE des Risikos
-  input.oninput = () => {
-    const val = Number(input.value);
-    const buyer = roundEuro(val);
-
-    let liveChance;
-
-    if (!input.value.trim()) {
-      liveChance = state.last_abort_display; // Option 3
-    } else if (buyer < roundEuro(1500 * state.scale)) {
-      liveChance = 100;
-    } else {
-      const diff = Math.abs(state.current_offer - buyer);
-      liveChance = abortProbability(diff);
-    }
-
-    updateAbortUI(liveChance);
-  };
-
-  function updateAbortUI(chance) {
-    const box = document.getElementById("abortBox");
-    const label = document.getElementById("abortLabel");
-    const val = document.getElementById("abortValue");
-
-    let color = "#16a34a";
-    if (chance > 50) color = "#ea580c";
-    else if (chance > 25) color = "#eab308";
-
-    box.style.borderLeft = `6px solid ${color}`;
-    box.style.background = color + "22";
-    label.style.color = color;
-    val.style.color = color;
-
-    val.textContent = chance + "%";
-  }
-
-  document.getElementById("sendBtn").onclick =
-    () => handleSubmit(input.value);
-
-  document.getElementById("acceptBtn").onclick =
-    () => finish(true, state.current_offer);
-}
-
-
-
-/* ============================================================
-   HANDLE SUBMIT
-============================================================ */
-
-function handleSubmit(raw) {
-
-  let num = roundEuro(Number(raw));
-
-  if (!Number.isFinite(num) || num <= 0)
-    return viewNegotiate("Bitte eine gültige Zahl eingeben.");
-
-  if (state.history.length > 0) {
-    const last = state.history[state.history.length - 1].proband_counter;
-    if (num < last)
-      return viewNegotiate("Sie dürfen nicht niedriger bieten als zuvor.");
-  }
-
-  state.warningText = getWarning(num);
-
-  if (shouldAccept(num)) {
+  document.getElementById('acceptBtn').onclick = () => {
+    state.history.push({
+      runde: state.runde,
+      algo_offer: state.current_offer,
+      proband_counter: null,
+      accepted: true
+    });
 
     logRound({
       runde: state.runde,
       algo_offer: state.current_offer,
+      proband_counter: '',
+      accepted: true,
+      finished: true,
+      deal_price: state.current_offer
+    });
+
+    state.accepted = true;
+    state.finished = true;
+    state.deal_price = state.current_offer;
+
+    viewThink(() => viewFinish(true));
+  };
+}
+
+/* ========================================================================== */
+/* Handle Submit                                                              */
+/* ========================================================================== */
+function handleSubmit(raw){
+  const val = raw.trim().replace(',','.');
+  const num = Number(val);
+
+  if (!Number.isFinite(num) || num < 0){
+    return viewNegotiate('Bitte eine gültige Zahl ≥ 0 eingeben.');
+  }
+
+  const prevOffer = state.current_offer;
+  const f = state.scale_factor || 1.0;
+  const extremeThreshold = EXTREME_BASE * f;
+
+  if (shouldAutoAccept(state.initial_offer, state.min_price, prevOffer, num)){
+    state.history.push({
+      runde: state.runde,
+      algo_offer: prevOffer,
+      proband_counter: num,
+      accepted: true
+    });
+
+    logRound({
+      runde: state.runde,
+      algo_offer: prevOffer,
       proband_counter: num,
       accepted: true,
       finished: true,
       deal_price: num
     });
 
-    return finish(true, num);
+    state.accepted = true;
+    state.finished = true;
+    state.deal_price = num;
+
+    return viewThink(() => viewFinish(true));
+  }
+
+  if (num < extremeThreshold){
+    state.last_abort_chance = 100;
+
+    state.history.push({
+      runde: state.runde,
+      algo_offer: prevOffer,
+      proband_counter: num,
+      accepted: false
+    });
+
+    logRound({
+      runde: state.runde,
+      algo_offer: prevOffer,
+      proband_counter: num,
+      accepted: false,
+      finished: true,
+      deal_price: ''
+    });
+
+    state.finished = true;
+    state.accepted = false;
+    state.finish_reason = 'abort';
+
+    return viewAbort(100);
   }
 
   if (maybeAbort(num)) return;
 
+  const next = computeNextOffer(prevOffer, state.min_price);
+  const concession = prevOffer - next;
+
+  logRound({
+    runde: state.runde,
+    algo_offer: prevOffer,
+    proband_counter: num,
+    accepted: false,
+    finished: false,
+    deal_price: ''
+  });
+
   state.history.push({
     runde: state.runde,
-    algo_offer: state.current_offer,
-    proband_counter: num
+    algo_offer: prevOffer,
+    proband_counter: num,
+    accepted: false
   });
 
   updatePatternMessage();
 
-  state.current_offer = computeNextOffer(num);
+  state.current_offer = next;
+  state.last_concession = concession;
 
-  logRound({
-    runde: state.runde,
-    algo_offer: state.current_offer,
-    proband_counter: num,
-    accepted: false,
-    finished: false,
-    deal_price: ""
-  });
-
-  state.last_abort_display = abortProbability(Math.abs(state.current_offer - num));
-
-  if (state.runde >= state.max_runden)
-    return viewDecision();
+  if (state.runde >= state.max_runden){
+    state.finished = true;
+    state.finish_reason = 'max_rounds';
+    return viewThink(() => viewDecision());
+  }
 
   state.runde++;
-  viewNegotiate();
+  viewThink(() => viewNegotiate());
 }
 
-
-
-/* ============================================================
-   LETZTE RUNDE
-============================================================ */
-
-function viewDecision() {
+/* ========================================================================== */
+/* Entscheidung – letzte Runde                                                */
+/* ========================================================================== */
+function viewDecision(){
   app.innerHTML = `
-    <div class="card">
-      <h1>Letzte Runde</h1>
-      <p>Letztes Angebot: ${eur(state.current_offer)}</p>
+    <h1>Letzte Runde</h1>
+    <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
 
-      <button id="acceptBtn">Annehmen</button>
-      <button id="declineBtn" class="ghost">Ablehnen</button>
-
-      ${renderHistory()}
+    <div class="card" style="padding:16px;border:1px dashed var(--accent);">
+      <strong>Letztes Angebot:</strong> ${eur(state.current_offer)}
     </div>
+
+    <button id="takeBtn">Annehmen</button>
+    <button id="noBtn" class="ghost">Ablehnen</button>
+
+    ${historyTable()}
   `;
 
-  document.getElementById("acceptBtn").onclick =
-    () => finish(true, state.current_offer);
+  document.getElementById('takeBtn').onclick = () => {
+    state.history.push({
+      runde: state.runde,
+      algo_offer: state.current_offer,
+      proband_counter: null,
+      accepted:true
+    });
 
-  document.getElementById("declineBtn").onclick =
-    () => finish(false, null);
+    logRound({
+      runde: state.runde,
+      algo_offer: state.current_offer,
+      proband_counter: '',
+      accepted: true,
+      finished: true,
+      deal_price: state.current_offer
+    });
+
+    state.accepted = true;
+    state.finished = true;
+    state.deal_price = state.current_offer;
+
+    viewThink(() => viewFinish(true));
+  };
+
+  document.getElementById('noBtn').onclick = () => {
+    state.history.push({
+      runde: state.runde,
+      algo_offer: state.current_offer,
+      proband_counter: null,
+      accepted:false
+    });
+
+    logRound({
+      runde: state.runde,
+      algo_offer: state.current_offer,
+      proband_counter: '',
+      accepted: false,
+      finished: true,
+      deal_price: ''
+    });
+
+    state.finished = true;
+    state.accepted = false;
+    state.finish_reason = 'max_rounds';
+
+    viewThink(() => viewFinish(false));
+  };
 }
 
+/* ========================================================================== */
+/* Finish-Screen                                                              */
+/* ========================================================================== */
+function viewFinish(accepted){
+  const dealPrice = state.deal_price ?? state.current_offer;
 
-
-/* ============================================================
-   ABSCHLUSS
-============================================================ */
-
-function finish(accepted, dealPrice) {
-
-  if (dealPrice != null) dealPrice = roundEuro(dealPrice);
-
-  state.accepted = accepted;
-  state.finished = true;
-  state.deal_price = dealPrice;
-
-  logRound({
-    runde: state.runde,
-    algo_offer: state.current_offer,
-    proband_counter: dealPrice,
-    accepted,
-    finished: true,
-    deal_price: dealPrice
-  });
+  let text;
+  if (accepted){
+    text = `Einigung in Runde ${state.runde} bei ${eur(dealPrice)}.`;
+  } else if (state.finish_reason === 'abort'){
+    text = `Verhandlung vom Verkäufer abgebrochen.`;
+  } else {
+    text = `Maximale Runden erreicht.`;
+  }
 
   app.innerHTML = `
-    <div class="card">
-      <h1>Verhandlung beendet</h1>
-      <p>${accepted ? `Einigung bei <b>${eur(dealPrice)}</b>` : "Keine Einigung."}</p>
+    <h1>Verhandlung abgeschlossen</h1>
+    <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
 
-      ${renderHistory()}
-
-      <button id="restartBtn">Neu starten</button>
+    <div class="card" style="padding:16px;border:1px dashed var(--accent);">
+      <strong>Ergebnis:</strong> ${text}</strong>
     </div>
+
+    <button id="restartBtn">Neue Verhandlung</button>
+
+    ${historyTable()}
   `;
 
-  document.getElementById("restartBtn").onclick = () => {
+  document.getElementById('restartBtn').onclick = () => {
     state = newState();
     viewVignette();
   };
 }
 
-
-
-/* ============================================================
-   START
-============================================================ */
-
+/* ========================================================================== */
+/* Start                                                                      */
+/* ========================================================================== */
 viewVignette();
