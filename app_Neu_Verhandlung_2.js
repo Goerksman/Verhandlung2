@@ -168,6 +168,9 @@ function getWarning(userOffer) {
    Chance basiert auf Differenz Verkäufer↔Käufer der aktuellen Runde:
    5500 vs 2500 => 40%
    Skalierung über state.scale
+
+   NEU: In den ersten 4 Runden erhöht ein sehr kleiner Schritt (<150€)
+        das Risiko zusätzlich und erzeugt eine Warnung.
 ============================================================ */
 
 function abortProbabilityFromLastDifference(sellerOffer, buyerOffer) {
@@ -213,8 +216,28 @@ function maybeAbort(userOffer) {
     return true;
   }
 
-  // 2) Differenz-Risiko
-  const chance = abortProbabilityFromLastDifference(seller, buyer);
+  // 2) Basis-Risiko über Differenz
+  let chance = abortProbabilityFromLastDifference(seller, buyer);
+
+  // 3) NEU: kleine Schritte (<150€) in den ersten 4 Runden erhöhen Risiko + Warnung
+  // (bezogen auf den letzten Käuferwert)
+  state.warningText = "";
+  if (state.runde <= 4) {
+    const last = state.history[state.history.length - 1];
+    if (last && last.proband_counter != null) {
+      const lastBuyer = roundEuro(last.proband_counter);
+      const stepUp = buyer - lastBuyer;
+
+      if (stepUp > 0 && stepUp < 150) {
+        // Risikoaufschlag (moderate Erhöhung, aber spürbar)
+        chance = Math.min(chance + 15, 100);
+
+        state.warningText =
+          `Achtung: Deine Erhöhung ist sehr klein (< ${eur(150)}). In den ersten Runden erhöht das das Abbruchrisiko.`;
+      }
+    }
+  }
+
   state.last_abort_chance = chance;
 
   const roll = randInt(1, 100);
@@ -422,6 +445,8 @@ function viewNegotiate(errorMsg){
         </span>
       </div>
 
+      ${state.warningText ? `<p class="error">${state.warningText}</p>` : ''}
+
       <label for="counter">Dein Gegenangebot (€)</label>
       <div class="row">
         <input id="counter" type="number" step="1" min="0" />
@@ -480,7 +505,7 @@ function handleSubmit(raw){
 
   const num = roundEuro(parsed);
 
-  // NEU: keine niedrigeren Angebote als in der Vorrunde erlauben
+  // keine niedrigeren Angebote als in der Vorrunde erlauben
   const last = state.history[state.history.length - 1];
   if (last && last.proband_counter != null) {
     const lastBuyer = roundEuro(last.proband_counter);
@@ -516,7 +541,7 @@ function handleSubmit(raw){
     return viewThink(() => viewFinish(true));
   }
 
-  // Abbruch prüfen
+  // Abbruch prüfen (setzt ggf. warningText + last_abort_chance)
   if (maybeAbort(num)) return;
 
   // normale Runde
