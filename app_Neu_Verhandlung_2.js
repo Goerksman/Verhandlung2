@@ -1,12 +1,27 @@
-/* ============================================================
-   KONFIG 
-============================================================ */
+/* ========================================================================== */
+/* Konfiguration via URL                                                     */
+/* ========================================================================== */
+const Q = new URLSearchParams(location.search);
+
 const CONFIG = {
-  ROUNDS_MIN: 8,
-  ROUNDS_MAX: 12,
-  THINK_DELAY_MS_MIN: 1200,
-  THINK_DELAY_MS_MAX: 2800
+  INITIAL_OFFER: Number(Q.get('i')) || 5500,
+
+  // optional direkt setzen (?min=3500). Wenn nicht gesetzt, wird per Faktor berechnet.
+  MIN_PRICE: Q.has('min') ? Number(Q.get('min')) : undefined,
+  MIN_PRICE_FACTOR: Number(Q.get('mf')) || 0.70,
+
+  // Zufällige Rundenzahl 8–12 (optional über rmin/rmax konfigurierbar)
+  ROUNDS_MIN: parseInt(Q.get('rmin') || '8', 10),
+  ROUNDS_MAX: parseInt(Q.get('rmax') || '12', 10),
+
+  THINK_DELAY_MS_MIN: parseInt(Q.get('tmin') || '1200', 10),
+  THINK_DELAY_MS_MAX: parseInt(Q.get('tmax') || '2800', 10)
 };
+
+// Mindestpreis finalisieren (Fallback über Faktor)
+CONFIG.MIN_PRICE = Number.isFinite(CONFIG.MIN_PRICE)
+  ? CONFIG.MIN_PRICE
+  : Math.round(CONFIG.INITIAL_OFFER * CONFIG.MIN_PRICE_FACTOR);
 
 
 /* ============================================================
@@ -55,9 +70,9 @@ function nextDimension() {
 function newState() {
   const f = nextDimension();
 
-  // Basiswerte jetzt *mit Multiplikator f*
-  const baseStart = roundEuro(5500 * f);
-  const baseMin   = roundEuro(3500 * f);
+  // Basiswerte jetzt *mit Multiplikator f* (Basis aus URL konfigurierbar)
+  const baseStart = roundEuro(CONFIG.INITIAL_OFFER * f);
+  const baseMin   = roundEuro(CONFIG.MIN_PRICE * f);
 
   return {
     participant_id: crypto.randomUUID?.() || ("v_" + Date.now()),
@@ -169,8 +184,8 @@ function getWarning(userOffer) {
    5500 vs 2500 => 40%
    Skalierung über state.scale
 
-   NEU: In den ersten 4 Runden erhöht ein sehr kleiner Schritt (<150€)
-        das Risiko zusätzlich und erzeugt eine Warnung.
+   In den ersten 4 Runden erhöht ein sehr kleiner Schritt (<150€)
+   das Risiko zusätzlich und erzeugt eine Warnung.
 ============================================================ */
 
 function abortProbabilityFromLastDifference(sellerOffer, buyerOffer) {
@@ -219,8 +234,7 @@ function maybeAbort(userOffer) {
   // 2) Basis-Risiko über Differenz
   let chance = abortProbabilityFromLastDifference(seller, buyer);
 
-  // 3) NEU: kleine Schritte (<150€) in den ersten 4 Runden erhöhen Risiko + Warnung
-  // (bezogen auf den letzten Käuferwert)
+  // 3) kleine Schritte (<150€) in den ersten 4 Runden erhöhen Risiko + Warnung
   state.warningText = "";
   if (state.runde <= 4) {
     const last = state.history[state.history.length - 1];
@@ -229,9 +243,7 @@ function maybeAbort(userOffer) {
       const stepUp = buyer - lastBuyer;
 
       if (stepUp > 0 && stepUp < 150) {
-        // Risikoaufschlag (moderate Erhöhung, aber spürbar)
         chance = Math.min(chance + 15, 100);
-
         state.warningText =
           `Achtung: Deine Erhöhung ist sehr klein (< ${eur(150)}). In den ersten Runden erhöht das das Abbruchrisiko.`;
       }
@@ -411,7 +423,6 @@ function viewAbort(chance){
 }
 
 function viewNegotiate(errorMsg){
-  // Anzeige: zuletzt berechnete Abbruchwahrscheinlichkeit
   const abortChance = (typeof state.last_abort_chance === 'number')
     ? state.last_abort_chance
     : null;
