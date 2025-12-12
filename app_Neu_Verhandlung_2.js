@@ -171,7 +171,7 @@ function getWarning(userOffer) {
   if (last && last.proband_counter != null) {
     const diff = buyer - last.proband_counter;
     if (diff > 0 && diff <= SMALL_STEP)
-      return `Ihre Erhöhung ist sehr klein (≤ ${eur(SMALL_STEP)}). Bitte machen Sie einen größeren Schritt.`;
+      return `Deine bisherigen Erhöhungen sind ziemlich frech – mach bitte einen größeren Schritt nach oben.`;
   }
 
   return "";
@@ -666,4 +666,5 @@ function viewFinish(accepted){
 ============================================================ */
 
 viewVignette();
+
 
