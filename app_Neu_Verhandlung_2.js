@@ -365,8 +365,6 @@ function viewVignette(){
       Ein Verkäufer bietet eine <b>hochwertige Designer-Ledercouch</b> auf einer Möbelmesse an.
       Vergleichbare Sofas liegen zwischen <b>2.500 €</b> und <b>10.000 €</b>.
     </p>
-    <p>
-      Du verhandelst über den Verkaufspreis, aber der Verkäufer besitzt eine klare Preisuntergrenze.
     </p>
     <p class="muted">
       <b>Hinweis:</b> Die Verhandlung dauert zufällig ${CONFIG.ROUNDS_MIN}–${CONFIG.ROUNDS_MAX} Runden.
@@ -668,3 +666,4 @@ function viewFinish(accepted){
 ============================================================ */
 
 viewVignette();
+
