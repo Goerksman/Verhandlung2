@@ -245,8 +245,8 @@ function maybeAbort(userOffer) {
       if (stepUp > 0 && stepUp < 150) {
         chance = Math.min(chance + 15, 100);
         state.warningText =
-          `Achtung: Deine Erhöhung ist sehr klein (< ${eur(150)}). In den ersten Runden erhöht das das Abbruchrisiko.`;
-      }
+             `Deine bisherigen Erhöhungen sind ziemlich frech – mach bitte einen größeren Schritt nach oben.`;
+  }
     }
   }
 
@@ -666,5 +666,6 @@ function viewFinish(accepted){
 ============================================================ */
 
 viewVignette();
+
 
 
