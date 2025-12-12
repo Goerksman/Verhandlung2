@@ -213,7 +213,7 @@ function maybeAbort(userOffer) {
     return true;
   }
 
-  // 2) Differenz-Risiko (NEU)
+  // 2) Differenz-Risiko
   const chance = abortProbabilityFromLastDifference(seller, buyer);
   state.last_abort_chance = chance;
 
@@ -480,6 +480,15 @@ function handleSubmit(raw){
 
   const num = roundEuro(parsed);
 
+  // NEU: keine niedrigeren Angebote als in der Vorrunde erlauben
+  const last = state.history[state.history.length - 1];
+  if (last && last.proband_counter != null) {
+    const lastBuyer = roundEuro(last.proband_counter);
+    if (num < lastBuyer) {
+      return viewNegotiate(`Dein Gegenangebot darf nicht niedriger sein als in der Vorrunde (${eur(lastBuyer)}).`);
+    }
+  }
+
   const prevOffer = state.current_offer;
 
   // Auto-Accept
@@ -623,4 +632,3 @@ function viewFinish(accepted){
 ============================================================ */
 
 viewVignette();
-
