@@ -165,18 +165,27 @@ function getWarning(userOffer) {
 
 /* ============================================================
    RISIKO-SYSTEM (Differenzmodell + Sofortabbruch <1500·f)
+   Chance basiert auf Differenz Verkäufer↔Käufer der aktuellen Runde:
+   5500 vs 2500 => 40%
+   Skalierung über state.scale
 ============================================================ */
 
-function abortProbability(diff) {
-  const d = roundEuro(diff);
+function abortProbabilityFromLastDifference(sellerOffer, buyerOffer) {
+  const f = state.scale || 1.0;
 
-  if (d >= 1000) return 40;
-  if (d >= 750) return 30;
-  if (d >= 500) return 20;
-  if (d >= 250) return 10;
-  if (d >= 100) return 5;
+  const diff = Math.abs(
+    roundEuro(sellerOffer) - roundEuro(buyerOffer)
+  );
 
-  return 0;
+  // Referenz: 3000 € → 40%
+  // ⇒ 7500 € → 100%, skaliert nach Dimension
+  const REF_DIFF = 7500 * f;
+
+  const chance = Math.round(
+    Math.min((diff / REF_DIFF) * 100, 100)
+  );
+
+  return chance;
 }
 
 function maybeAbort(userOffer) {
@@ -204,9 +213,8 @@ function maybeAbort(userOffer) {
     return true;
   }
 
-  // 2) Differenz-Risiko
-  const diff = Math.abs(seller - buyer);
-  const chance = abortProbability(diff);
+  // 2) Differenz-Risiko (NEU)
+  const chance = abortProbabilityFromLastDifference(seller, buyer);
   state.last_abort_chance = chance;
 
   const roll = randInt(1, 100);
@@ -380,7 +388,7 @@ function viewAbort(chance){
 }
 
 function viewNegotiate(errorMsg){
-  // Anzeige: zuletzt berechnete Abbruchwahrscheinlichkeit (Differenzmodell)
+  // Anzeige: zuletzt berechnete Abbruchwahrscheinlichkeit
   const abortChance = (typeof state.last_abort_chance === 'number')
     ? state.last_abort_chance
     : null;
@@ -499,7 +507,7 @@ function handleSubmit(raw){
     return viewThink(() => viewFinish(true));
   }
 
-  // Abbruch prüfen (Differenzmodell / Sofortabbruch)
+  // Abbruch prüfen
   if (maybeAbort(num)) return;
 
   // normale Runde
