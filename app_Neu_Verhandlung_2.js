@@ -108,19 +108,23 @@ function shouldAccept(userOffer) {
   const seller = state.current_offer;
   const f = state.scale;
 
+  // 1) Käufer-Angebot ≥ aktuelles Verkäuferangebot
   if (buyer >= seller) return true;
 
+  // 2) Käufer liegt innerhalb von 5 % am Verkäuferangebot
   if (Math.abs(seller - buyer) / seller <= 0.05) return true;
 
+  // 3) Absolute Schwelle (mit Dimension skaliert)
   if (buyer >= roundEuro(5000 * f)) return true;
 
+  // 4) Letzte Runde (oder vorletzte) und Käufer ist mindestens bei min_price
   if (state.max_runden - state.runde <= 1 && buyer >= state.min_price)
     return true;
 
   return false;
 }
 
-/* Wrapper, weil dein handleSubmit vorher shouldAutoAccept aufruft */
+/* Wrapper, weil handleSubmit vorher shouldAutoAccept aufruft */
 function shouldAutoAccept(_initialOffer, _minPrice, _prevOffer, counter) {
   return shouldAccept(counter);
 }
@@ -211,7 +215,7 @@ function maybeAbort(userOffer) {
   const seller = state.current_offer;
   const buyer = roundEuro(userOffer);
 
-  // 1) Sofortabbruch
+  // 1) Sofortabbruch bei extremem Lowball
   if (buyer < roundEuro(1500 * f)) {
     state.last_abort_chance = 100;
 
@@ -234,7 +238,7 @@ function maybeAbort(userOffer) {
   // 2) Basis-Risiko über Differenz
   let chance = abortProbabilityFromLastDifference(seller, buyer);
 
-  // 3) kleine Schritte (<150€) in den ersten 4 Runden erhöhen Risiko + Warnung
+  // 3) kleine Schritte (<150€) in den ersten 4 Runden erhöhen Risiko + setzen warningText
   state.warningText = "";
   if (state.runde <= 4) {
     const last = state.history[state.history.length - 1];
@@ -245,8 +249,8 @@ function maybeAbort(userOffer) {
       if (stepUp > 0 && stepUp < 150) {
         chance = Math.min(chance + 15, 100);
         state.warningText =
-             `Deine bisherigen Erhöhungen sind ziemlich frech – mach bitte einen größeren Schritt nach oben.`;
-  }
+          `Deine bisherigen Erhöhungen sind ziemlich frech – mach bitte einen größeren Schritt nach oben.`;
+      }
     }
   }
 
@@ -364,7 +368,6 @@ function viewVignette(){
     <p>
       Ein Verkäufer bietet eine <b>hochwertige Designer-Ledercouch</b> auf einer Möbelmesse an.
       Vergleichbare Sofas liegen zwischen <b>2.500 €</b> und <b>10.000 €</b>.
-    </p>
     </p>
     <p class="muted">
       <b>Hinweis:</b> Die Verhandlung dauert zufällig ${CONFIG.ROUNDS_MIN}–${CONFIG.ROUNDS_MAX} Runden.
@@ -666,6 +669,3 @@ function viewFinish(accepted){
 ============================================================ */
 
 viewVignette();
-
-
-
