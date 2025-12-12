@@ -1,4 +1,15 @@
 /* ============================================================
+   KONFIG (fehlt sonst -> "Lade …")
+============================================================ */
+const CONFIG = {
+  ROUNDS_MIN: 8,
+  ROUNDS_MAX: 12,
+  THINK_DELAY_MS_MIN: 1200,
+  THINK_DELAY_MS_MAX: 2800
+};
+
+
+/* ============================================================
    HILFSFUNKTIONEN
 ============================================================ */
 
@@ -14,7 +25,6 @@ const eur = n =>
   }).format(roundEuro(n));
 
 const app = document.getElementById("app");
-
 
 
 /* ============================================================
@@ -38,13 +48,11 @@ function nextDimension() {
 }
 
 
-
 /* ============================================================
    SPIELZUSTAND
 ============================================================ */
 
 function newState() {
-
   const f = nextDimension();
 
   // Basiswerte jetzt *mit Multiplikator f*
@@ -55,7 +63,7 @@ function newState() {
     participant_id: crypto.randomUUID?.() || ("v_" + Date.now()),
 
     runde: 1,
-    max_runden: randInt(8, 12),
+    max_runden: randInt(CONFIG.ROUNDS_MIN, CONFIG.ROUNDS_MAX),
 
     scale: f,
 
@@ -69,12 +77,11 @@ function newState() {
 
     warningText: "",
     patternMessage: "",
-    last_abort_display: 0   // für Maske Option 3
+    last_abort_chance: null // für Anzeige
   };
 }
 
 let state = newState();
-
 
 
 /* ============================================================
@@ -98,6 +105,10 @@ function shouldAccept(userOffer) {
   return false;
 }
 
+/* Wrapper, weil dein handleSubmit vorher shouldAutoAccept aufruft */
+function shouldAutoAccept(_initialOffer, _minPrice, _prevOffer, counter) {
+  return shouldAccept(counter);
+}
 
 
 /* ============================================================
@@ -105,7 +116,6 @@ function shouldAccept(userOffer) {
 ============================================================ */
 
 function computeNextOffer(userOffer) {
-
   if (shouldAccept(userOffer))
     return roundEuro(userOffer);
 
@@ -125,7 +135,6 @@ function computeNextOffer(userOffer) {
 
   return roundEuro(next);
 }
-
 
 
 /* ============================================================
@@ -154,7 +163,6 @@ function getWarning(userOffer) {
 }
 
 
-
 /* ============================================================
    RISIKO-SYSTEM (Differenzmodell + Sofortabbruch <1500·f)
 ============================================================ */
@@ -172,13 +180,13 @@ function abortProbability(diff) {
 }
 
 function maybeAbort(userOffer) {
-
   const f = state.scale;
   const seller = state.current_offer;
   const buyer = roundEuro(userOffer);
 
   // 1) Sofortabbruch
   if (buyer < roundEuro(1500 * f)) {
+    state.last_abort_chance = 100;
 
     logRound({
       runde: state.runde,
@@ -193,18 +201,17 @@ function maybeAbort(userOffer) {
     state.accepted = false;
 
     viewAbort(100);
-
     return true;
   }
 
   // 2) Differenz-Risiko
   const diff = Math.abs(seller - buyer);
   const chance = abortProbability(diff);
+  state.last_abort_chance = chance;
 
   const roll = randInt(1, 100);
 
   if (roll <= chance) {
-
     logRound({
       runde: state.runde,
       algo_offer: seller,
@@ -218,13 +225,11 @@ function maybeAbort(userOffer) {
     state.accepted = false;
 
     viewAbort(chance);
-
     return true;
   }
 
   return false;
 }
-
 
 
 /* ============================================================
@@ -260,7 +265,6 @@ function updatePatternMessage() {
 }
 
 
-
 /* ============================================================
    LOGGING
 ============================================================ */
@@ -277,40 +281,37 @@ function logRound(row) {
 }
 
 
-
 /* ============================================================
    HISTORY
 ============================================================ */
 
-function renderHistory() {
-  if (!state.history.length) return "";
+function historyTable(){
+  if (!state.history.length) return '';
+  const rows = state.history
+    .map(h => `
+      <tr>
+        <td>${h.runde}</td>
+        <td>${eur(h.algo_offer)}</td>
+        <td>${h.proband_counter != null && h.proband_counter !== '' ? eur(h.proband_counter) : '-'}</td>
+        <td>${h.accepted ? 'Ja' : 'Nein'}</td>
+      </tr>
+    `)
+    .join('');
 
   return `
     <h2>Verlauf</h2>
     <table>
       <thead>
-        <tr><th>R</th><th>Verkäufer</th><th>Du</th></tr>
+        <tr><th>Runde</th><th>Angebot Verkäufer</th><th>Gegenangebot</th><th>Angenommen?</th></tr>
       </thead>
-      <tbody>
-        ${state.history
-          .map(
-            h => `
-          <tr>
-            <td>${h.runde}</td>
-            <td>${eur(h.algo_offer)}</td>
-            <td>${h.proband_counter != null ? eur(h.proband_counter) : "-"}</td>
-          </tr>`
-          )
-          .join("")}
-      </tbody>
+      <tbody>${rows}</tbody>
     </table>
   `;
 }
 
 
-
 /* ============================================================
-   SCREENS – VERHANDLUNGSMASKE (SCREENSHOT VERSION!)
+   SCREENS
 ============================================================ */
 
 function viewVignette(){
@@ -357,30 +358,6 @@ function viewThink(next){
   setTimeout(next, delay);
 }
 
-function historyTable(){
-  if (!state.history.length) return '';
-  const rows = state.history
-    .map(h => `
-      <tr>
-        <td>${h.runde}</td>
-        <td>${eur(h.algo_offer)}</td>
-        <td>${h.proband_counter != null && h.proband_counter !== '' ? eur(h.proband_counter) : '-'}</td>
-        <td>${h.accepted ? 'Ja' : 'Nein'}</td>
-      </tr>
-    `)
-    .join('');
-
-  return `
-    <h2>Verlauf</h2>
-    <table>
-      <thead>
-        <tr><th>Runde</th><th>Angebot Verkäufer</th><th>Gegenangebot</th><th>Angenommen?</th></tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-  `;
-}
-
 function viewAbort(chance){
   app.innerHTML = `
     <h1>Verhandlung abgebrochen</h1>
@@ -402,12 +379,11 @@ function viewAbort(chance){
   };
 }
 
-/* ========================================================================== */
-/* Hauptscreen der Verhandlung                                                 */
-/* ========================================================================== */
-
 function viewNegotiate(errorMsg){
-  const abortChance = typeof state.last_abort_chance === 'number' ? state.last_abort_chance : null;
+  // Anzeige: zuletzt berechnete Abbruchwahrscheinlichkeit (Differenzmodell)
+  const abortChance = (typeof state.last_abort_chance === 'number')
+    ? state.last_abort_chance
+    : null;
 
   let color = '#16a34a';
   if (abortChance !== null){
@@ -440,7 +416,7 @@ function viewNegotiate(errorMsg){
 
       <label for="counter">Dein Gegenangebot (€)</label>
       <div class="row">
-        <input id="counter" type="number" step="0.01" min="0" />
+        <input id="counter" type="number" step="1" min="0" />
         <button id="sendBtn">Gegenangebot senden</button>
       </div>
 
@@ -481,21 +457,24 @@ function viewNegotiate(errorMsg){
   };
 }
 
-/* ========================================================================== */
-/* Handle Submit                                                              */
-/* ========================================================================== */
-function handleSubmit(raw){
-  const val = raw.trim().replace(',','.');
-  const num = Number(val);
 
-  if (!Number.isFinite(num) || num < 0){
+/* ============================================================
+   HANDLE SUBMIT
+============================================================ */
+
+function handleSubmit(raw){
+  const val = String(raw ?? '').trim().replace(',','.');
+  const parsed = Number(val);
+
+  if (!Number.isFinite(parsed) || parsed < 0){
     return viewNegotiate('Bitte eine gültige Zahl ≥ 0 eingeben.');
   }
 
-  const prevOffer = state.current_offer;
-  const f = state.scale_factor || 1.0;
-  const extremeThreshold = EXTREME_BASE * f;
+  const num = roundEuro(parsed);
 
+  const prevOffer = state.current_offer;
+
+  // Auto-Accept
   if (shouldAutoAccept(state.initial_offer, state.min_price, prevOffer, num)){
     state.history.push({
       runde: state.runde,
@@ -520,36 +499,11 @@ function handleSubmit(raw){
     return viewThink(() => viewFinish(true));
   }
 
-  if (num < extremeThreshold){
-    state.last_abort_chance = 100;
-
-    state.history.push({
-      runde: state.runde,
-      algo_offer: prevOffer,
-      proband_counter: num,
-      accepted: false
-    });
-
-    logRound({
-      runde: state.runde,
-      algo_offer: prevOffer,
-      proband_counter: num,
-      accepted: false,
-      finished: true,
-      deal_price: ''
-    });
-
-    state.finished = true;
-    state.accepted = false;
-    state.finish_reason = 'abort';
-
-    return viewAbort(100);
-  }
-
+  // Abbruch prüfen (Differenzmodell / Sofortabbruch)
   if (maybeAbort(num)) return;
 
-  const next = computeNextOffer(prevOffer, state.min_price);
-  const concession = prevOffer - next;
+  // normale Runde
+  const next = computeNextOffer(num);
 
   logRound({
     runde: state.runde,
@@ -570,11 +524,9 @@ function handleSubmit(raw){
   updatePatternMessage();
 
   state.current_offer = next;
-  state.last_concession = concession;
 
   if (state.runde >= state.max_runden){
     state.finished = true;
-    state.finish_reason = 'max_rounds';
     return viewThink(() => viewDecision());
   }
 
@@ -582,9 +534,11 @@ function handleSubmit(raw){
   viewThink(() => viewNegotiate());
 }
 
-/* ========================================================================== */
-/* Entscheidung – letzte Runde                                                */
-/* ========================================================================== */
+
+/* ============================================================
+   LETZTE RUNDE
+============================================================ */
+
 function viewDecision(){
   app.innerHTML = `
     <h1>Letzte Runde</h1>
@@ -600,68 +554,40 @@ function viewDecision(){
     ${historyTable()}
   `;
 
-  document.getElementById('takeBtn').onclick = () => {
-    state.history.push({
-      runde: state.runde,
-      algo_offer: state.current_offer,
-      proband_counter: null,
-      accepted:true
-    });
-
-    logRound({
-      runde: state.runde,
-      algo_offer: state.current_offer,
-      proband_counter: '',
-      accepted: true,
-      finished: true,
-      deal_price: state.current_offer
-    });
-
-    state.accepted = true;
-    state.finished = true;
-    state.deal_price = state.current_offer;
-
-    viewThink(() => viewFinish(true));
-  };
-
-  document.getElementById('noBtn').onclick = () => {
-    state.history.push({
-      runde: state.runde,
-      algo_offer: state.current_offer,
-      proband_counter: null,
-      accepted:false
-    });
-
-    logRound({
-      runde: state.runde,
-      algo_offer: state.current_offer,
-      proband_counter: '',
-      accepted: false,
-      finished: true,
-      deal_price: ''
-    });
-
-    state.finished = true;
-    state.accepted = false;
-    state.finish_reason = 'max_rounds';
-
-    viewThink(() => viewFinish(false));
-  };
+  document.getElementById('takeBtn').onclick = () => finish(true, state.current_offer);
+  document.getElementById('noBtn').onclick = () => finish(false, null);
 }
 
-/* ========================================================================== */
-/* Finish-Screen                                                              */
-/* ========================================================================== */
+
+/* ============================================================
+   FINISH
+============================================================ */
+
+function finish(accepted, dealPrice) {
+  state.accepted = !!accepted;
+  state.finished = true;
+  state.deal_price = (dealPrice == null ? null : roundEuro(dealPrice));
+
+  logRound({
+    runde: state.runde,
+    algo_offer: state.current_offer,
+    proband_counter: dealPrice == null ? '' : state.deal_price,
+    accepted: state.accepted,
+    finished: true,
+    deal_price: dealPrice == null ? '' : state.deal_price
+  });
+
+  viewThink(() => viewFinish(state.accepted));
+}
+
 function viewFinish(accepted){
   const dealPrice = state.deal_price ?? state.current_offer;
 
   let text;
   if (accepted){
     text = `Einigung in Runde ${state.runde} bei ${eur(dealPrice)}.`;
-  } else if (state.finish_reason === 'abort'){
-    text = `Verhandlung vom Verkäufer abgebrochen.`;
   } else {
-    text = `Maximale Runden erreicht.`;
+    text = `Keine Einigung.`;
   }
 
   app.innerHTML = `
@@ -683,7 +609,9 @@ function viewFinish(accepted){
   };
 }
 
-/* ========================================================================== */
-/* Start                                                                      */
-/* ========================================================================== */
+
+/* ============================================================
+   INIT
+============================================================ */
+
 viewVignette();
