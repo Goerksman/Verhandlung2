@@ -205,11 +205,20 @@ function abortProbabilityFromLastDifference(sellerOffer, buyerOffer) {
 }
 
 function maybeAbort(userOffer) {
-  const f = state.scale;
+  const f      = state.scale;
   const seller = state.current_offer;
-  const buyer = roundEuro(userOffer);
+  const buyer  = roundEuro(userOffer);
 
-  // 1) Sofortabbruch bei extremem Lowball
+  // NEU: In Runde 1 endet die Verhandlung nie durch den Algorithmus
+  if (state.runde === 1) {
+    // Optional: Risiko trotzdem für die Anzeige berechnen
+    const baseChance = abortProbabilityFromLastDifference(seller, buyer);
+    state.last_abort_chance = baseChance;
+    state.warningText = "";
+    return false;
+  }
+
+  // 1) Sofortabbruch bei extremem Lowball (ab Runde 2)
   if (buyer < roundEuro(1500 * f)) {
     state.last_abort_chance = 100;
 
