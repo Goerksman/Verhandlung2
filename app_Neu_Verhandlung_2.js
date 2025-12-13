@@ -4,8 +4,8 @@
 const Q = new URLSearchParams(location.search);
 
 const CONFIG = {
-  // Standard-Startangebot 5518 (per URL über ?i= überschreibbar)
-  INITIAL_OFFER: Q.has('i') ? Number(Q.get('i')) : 5518,
+  // Standard-Startangebot 5500 (per URL über ?i= überschreibbar)
+  INITIAL_OFFER: Q.has('i') ? Number(Q.get('i')) : 5500,
 
   // optional direkt setzen (?min=3500). Wenn nicht gesetzt, wird per Faktor berechnet.
   MIN_PRICE: Q.has('min') ? Number(Q.get('min')) : undefined,
@@ -719,3 +719,4 @@ function viewFinish(accepted){
 ============================================================ */
 
 viewVignette();
+
