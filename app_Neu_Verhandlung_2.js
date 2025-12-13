@@ -92,7 +92,8 @@ function newState() {
 
     warningText: "",
     patternMessage: "",
-    last_abort_chance: null // für Anzeige
+    last_abort_chance: null, // für Anzeige
+    warningRounds: 0         // wie viele Runden in Folge die Klein-Schritt-Warnung aktiv war
   };
 }
 
@@ -132,23 +133,43 @@ function shouldAutoAccept(_initialOffer, _minPrice, _prevOffer, counter) {
 
 /* ============================================================
    VERKÄUFER-UPDATE
+   Runde 1:  -500 * f
+   Runde 2:  -250 * f
+   Ab Runde 3 bis vor der letzten Runde: prozentualer Schritt
+   Letzte Angebotsrunde (runde >= max_runden): direkt Schmerzgrenze
 ============================================================ */
 
 function computeNextOffer(userOffer) {
   if (shouldAccept(userOffer))
     return roundEuro(userOffer);
 
-  const f = state.scale;
-  const r = state.runde;
-  const min = state.min_price;
+  const f    = state.scale;
+  const r    = state.runde;
+  const min  = state.min_price;
   const curr = state.current_offer;
 
   let next;
 
-  if (r === 1)      next = curr - roundEuro(1000 * f);
-  else if (r === 2) next = curr - roundEuro(500 * f);
-  else if (r === 3) next = curr - roundEuro(250 * f);
-  else              next = curr - (curr - min) * 0.40;
+  if (r === 1) {
+    // 1. Runde: fester Schritt 500 * f
+    next = curr - roundEuro(500 * f);
+  } else if (r === 2) {
+    // 2. Runde: fester Schritt 250 * f
+    next = curr - roundEuro(250 * f);
+  } else if (r >= state.max_runden) {
+    // Letzte Angebotsrunde: direkt an die Schmerzgrenze
+    next = min;
+  } else {
+    // Ab Runde 3 bis kurz vor der letzten Runde: prozentualer Schritt,
+    // abhängig von verbleibenden Runden, damit wir uns systematisch der Schmerzgrenze nähern.
+    const remainingSteps = state.max_runden - r + 1; // inkl. dieser Runde bis zur "Angebots-Endrunde"
+    const gap            = curr - min;
+
+    // Wir gehen schrittweise um einen gleich großen Anteil des Restabstands nach unten.
+    // Mit remainingSteps im Nenner werden die Schritte kleiner, je näher wir an min kommen.
+    const stepDown = gap / remainingSteps;
+    next = curr - stepDown;
+  }
 
   if (next < min) next = min;
 
@@ -184,6 +205,11 @@ function getWarning(userOffer) {
 
 /* ============================================================
    RISIKO-SYSTEM
+   - Differenzmodell mit 3000-Referenz: 3000 Differenz → 30 %
+   - Runde 1: kein Abbruch außer bei Angeboten < 1500 * f
+   - Kleine Schritte (<100 €) in Runden 1–4:
+       * Runde, in der Warnung auftaucht: +7 % Risiko
+       * plus +3 % pro aufeinanderfolgender "Warnrunde", bis die Warnung weg ist
 ============================================================ */
 
 function abortProbabilityFromLastDifference(sellerOffer, buyerOffer) {
@@ -193,15 +219,15 @@ function abortProbabilityFromLastDifference(sellerOffer, buyerOffer) {
     roundEuro(sellerOffer) - roundEuro(buyerOffer)
   );
 
-  // Referenz: 3000 € → 30%
-  // ⇒ 7500 € → 100%, skaliert nach Dimension
-  const REF_DIFF = 7500 * f;
+  // Referenz: 3000 € → 30 % (skalieren mit f)
+  const BASE_DIFF = 3000 * f;
 
-  const chance = Math.round(
-    Math.min((diff / REF_DIFF) * 100, 100)
-  );
+  let chance = (diff / BASE_DIFF) * 30;
 
-  return chance;
+  if (chance < 0)  chance = 0;
+  if (chance > 100) chance = 100;
+
+  return Math.round(chance);
 }
 
 function maybeAbort(userOffer) {
@@ -209,16 +235,7 @@ function maybeAbort(userOffer) {
   const seller = state.current_offer;
   const buyer  = roundEuro(userOffer);
 
-  // NEU: In Runde 1 endet die Verhandlung nie durch den Algorithmus
-  if (state.runde === 1) {
-    // Optional: Risiko trotzdem für die Anzeige berechnen
-    const baseChance = abortProbabilityFromLastDifference(seller, buyer);
-    state.last_abort_chance = baseChance;
-    state.warningText = "";
-    return false;
-  }
-
-  // 1) Sofortabbruch bei extremem Lowball (ab Runde 2)
+  // 1) Extrem-Lowball: unter 1500 * f → immer Abbruch, auch in Runde 1
   if (buyer < roundEuro(1500 * f)) {
     state.last_abort_chance = 100;
 
@@ -231,6 +248,13 @@ function maybeAbort(userOffer) {
       deal_price: ""
     });
 
+    state.history.push({
+      runde: state.runde,
+      algo_offer: seller,
+      proband_counter: buyer,
+      accepted: false
+    });
+
     state.finished = true;
     state.accepted = false;
 
@@ -238,23 +262,59 @@ function maybeAbort(userOffer) {
     return true;
   }
 
-  // 2) Basis-Risiko über Differenz
+  // 2) Runde 1: KEIN Abbruch (außer Extremfall oben),
+  //    aber Risiko zur Anzeige berechnen
+  if (state.runde === 1) {
+    const baseChance = abortProbabilityFromLastDifference(seller, buyer);
+    state.last_abort_chance = baseChance;
+    state.warningText = "";
+    // Warnungs-Kette in Runde 1 zurücksetzen
+    state.warningRounds = 0;
+    return false;
+  }
+
+  // 3) Ab Runde 2: Basis-Risiko über Differenz
   let chance = abortProbabilityFromLastDifference(seller, buyer);
 
-  // 3) kleine Schritte (<100€) in den ersten 4 Runden erhöhen Risiko + setzen warningText
+  // 4) Kleine Schritte (<100 €) in den ersten 4 Runden:
+  //    Warnung + +7 % Risiko in der "Warnrunde" + zusätzlich 3 % pro weiterer Warnrunde,
+  //    solange die Warnung bestehen bleibt.
+  let warningTriggered = false;
   state.warningText = "";
+
   if (state.runde <= 4) {
     const last = state.history[state.history.length - 1];
     if (last && last.proband_counter != null) {
       const lastBuyer = roundEuro(last.proband_counter);
-      const stepUp = buyer - lastBuyer;
+      const stepUp    = buyer - lastBuyer;
 
       if (stepUp > 0 && stepUp < 100) {
-        chance = Math.min(chance + 15, 100);
+        warningTriggered = true;
         state.warningText =
           `Deine bisherigen Erhöhungen sind ziemlich frech – mach bitte einen größeren Schritt nach oben.`;
+
+        // In der Runde, in der die Warnung erscheint, +7 %
+        chance = Math.min(chance + 7, 100);
+
+        // Anzahl aufeinanderfolgender Warnrunden hochzählen
+        state.warningRounds = (state.warningRounds || 0) + 1;
+      } else {
+        // Warnung erlischt → Zähler zurücksetzen
+        state.warningRounds = 0;
       }
+    } else {
+      // keine Vergleichsbasis → keine Warnung
+      state.warningRounds = 0;
     }
+  } else {
+    // Ab Runde > 4 keine Klein-Schritt-Warnung mehr
+    state.warningRounds = 0;
+  }
+
+  // 5) Zusätzliche Erhöhung: +3 % pro Runde, solange die Warnung aktiv bleibt
+  if (state.warningRounds && state.warningRounds > 0) {
+    const extra = state.warningRounds * 3;
+    chance = Math.min(chance + extra, 100);
   }
 
   state.last_abort_chance = chance;
@@ -269,6 +329,13 @@ function maybeAbort(userOffer) {
       accepted: false,
       finished: true,
       deal_price: ""
+    });
+
+    state.history.push({
+      runde: state.runde,
+      algo_offer: seller,
+      proband_counter: buyer,
+      accepted: false
     });
 
     state.finished = true;
@@ -634,7 +701,7 @@ function viewDecision(){
   `;
 
   document.getElementById('takeBtn').onclick = () => finish(true, state.current_offer);
-  document.getElementById('noBtn').onclick = () => finish(false, null);
+  document.getElementById('noBtn').onclick   = () => finish(false, null);
 }
 
 
@@ -643,8 +710,8 @@ function viewDecision(){
 ============================================================ */
 
 function finish(accepted, dealPrice) {
-  state.accepted = !!accepted;
-  state.finished = true;
+  state.accepted   = !!accepted;
+  state.finished   = true;
   state.deal_price = (dealPrice == null ? null : roundEuro(dealPrice));
 
   logRound({
@@ -716,4 +783,3 @@ function viewFinish(accepted){
 ============================================================ */
 
 viewVignette();
-
