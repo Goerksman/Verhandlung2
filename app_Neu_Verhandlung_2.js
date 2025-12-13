@@ -193,7 +193,7 @@ function abortProbabilityFromLastDifference(sellerOffer, buyerOffer) {
     roundEuro(sellerOffer) - roundEuro(buyerOffer)
   );
 
-  // Referenz: 3000 € → 40%
+  // Referenz: 3000 € → 30%
   // ⇒ 7500 € → 100%, skaliert nach Dimension
   const REF_DIFF = 7500 * f;
 
@@ -232,7 +232,7 @@ function maybeAbort(userOffer) {
   // 2) Basis-Risiko über Differenz
   let chance = abortProbabilityFromLastDifference(seller, buyer);
 
-  // 3) kleine Schritte (<150€) in den ersten 4 Runden erhöhen Risiko + setzen warningText
+  // 3) kleine Schritte (<100€) in den ersten 4 Runden erhöhen Risiko + setzen warningText
   state.warningText = "";
   if (state.runde <= 4) {
     const last = state.history[state.history.length - 1];
@@ -240,7 +240,7 @@ function maybeAbort(userOffer) {
       const lastBuyer = roundEuro(last.proband_counter);
       const stepUp = buyer - lastBuyer;
 
-      if (stepUp > 0 && stepUp < 150) {
+      if (stepUp > 0 && stepUp < 100) {
         chance = Math.min(chance + 15, 100);
         state.warningText =
           `Deine bisherigen Erhöhungen sind ziemlich frech – mach bitte einen größeren Schritt nach oben.`;
@@ -707,3 +707,4 @@ function viewFinish(accepted){
 ============================================================ */
 
 viewVignette();
+
