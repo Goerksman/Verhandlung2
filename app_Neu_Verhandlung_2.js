@@ -58,10 +58,22 @@ const eur = (n) =>
 const app = document.getElementById("app");
 
 /* ========================================================================== */
-/* Multiplikator: reelle Zufallszahl zwischen 1 und 5                         */
+/* Multiplikatoren: 1x, 2x, 3x, 4x, 5x (diskret, zufällig durchmischt)       */
 /* ========================================================================== */
+const DIM_FACTORS = [1, 2, 3, 4, 5];
+let DIM_QUEUE = [];
+
+function refillDimensionQueue() {
+  DIM_QUEUE = [...DIM_FACTORS];
+  for (let i = DIM_QUEUE.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [DIM_QUEUE[i], DIM_QUEUE[j]] = [DIM_QUEUE[j], DIM_QUEUE[i]];
+  }
+}
+
 function nextDimension() {
-  return 1 + Math.random() * 4; // [1,5)
+  if (DIM_QUEUE.length === 0) refillDimensionQueue();
+  return DIM_QUEUE.pop();
 }
 
 /* ========================================================================== */
@@ -94,7 +106,7 @@ function newState() {
     patternActive: false,
     patternRiskRounds: 0, // wie viele Runden in Folge das Pattern aktiv ist
 
-    last_abort_chance: null // für Anzeige
+    last_abort_chance: null // für Anzeige (nur Gesamtwert)
   };
 }
 
@@ -166,57 +178,48 @@ function computeNextOffer() {
 /* Pattern-Erkennung (keine / kleine Schritte)                               */
 /*  - relevant ab Angeboten ≥ 2250 * Multiplikator                           */
 /*  - "kleiner Schritt": diff >= 0 und diff ≤ 100 * Multiplikator           */
-/*  - nach 2 solchen Schritten in Folge → Warnung                           */
-/*  - Warnung bleibt aktiv, patternRiskRounds zählt Runden mit Warnung      */
+/*  - sobald Bedingung erfüllt: Warnung aktiv, patternRiskRounds++          */
+/*  - bei größerem Schritt oder Rückschritt → Reset                         */
 /* ========================================================================== */
 function updatePatternState(currentBuyerOffer) {
   const f           = state.scale;
   const minRelevant = roundEuro(2250 * f);
   const SMALL_STEP  = roundEuro(100 * f);
+  const buyer       = roundEuro(currentBuyerOffer);
 
-  // vorhandene relevante Gegenangebote
-  const counters = state.history
-    .map(h => h.proband_counter)
-    .filter(v => v != null && v !== "" && roundEuro(v) >= minRelevant)
-    .map(v => roundEuro(v));
+  const last = state.history[state.history.length - 1];
 
-  // aktuelles Angebot ergänzen
-  const buyer = roundEuro(currentBuyerOffer);
-  if (buyer >= minRelevant) {
-    counters.push(buyer);
-  }
-
-  if (counters.length < 2) {
+  if (!last || last.proband_counter == null) {
     state.patternActive     = false;
     state.patternRiskRounds = 0;
     state.patternMessage    = "";
     return;
   }
 
-  let chain = 1;
-  for (let i = 1; i < counters.length; i++) {
-    const diff = counters[i] - counters[i - 1];
+  const lastBuyer = roundEuro(last.proband_counter);
 
-    // kein Rückschritt und Schritt <= 100 * f (inkl. 0)
-    if (diff >= 0 && diff <= SMALL_STEP) {
-      chain++;
-    } else {
-      chain = 1;
-    }
+  // nur wenn beide Angebote im relevanten Bereich liegen
+  if (buyer < minRelevant || lastBuyer < minRelevant) {
+    state.patternActive     = false;
+    state.patternRiskRounds = 0;
+    state.patternMessage    = "";
+    return;
   }
 
-  const wasActive = state.patternActive;
+  const diff = buyer - lastBuyer;
 
-  if (chain >= 2) {
-    state.patternActive = true;
-    if (wasActive) {
-      state.patternRiskRounds = (state.patternRiskRounds || 0) + 1;
+  // keine Veränderung oder Erhöhung ≤ 100 * Multiplikator
+  if (diff >= 0 && diff <= SMALL_STEP) {
+    if (state.patternActive) {
+      state.patternRiskRounds += 1;
     } else {
+      state.patternActive     = true;
       state.patternRiskRounds = 1;
     }
     state.patternMessage =
       "Mit derart kleinen Erhöhungen kommen wir eher unwahrscheinlich zu einer Einigung.";
   } else {
+    // Muster bricht ab
     state.patternActive     = false;
     state.patternRiskRounds = 0;
     state.patternMessage    = "";
@@ -226,7 +229,7 @@ function updatePatternState(currentBuyerOffer) {
 /* ========================================================================== */
 /* Abbruchwahrscheinlichkeit (Basis)                                         */
 /*  - Referenz: Differenz 3000 * Multiplikator → 30 %                       */
-/*  - Basisfunktion für alle Runden (Abbruch aber erst ab Runde 4)          */
+/*  - gilt ab Runde 1 (Abbruch aber erst ab Runde 4)                         */
 /* ========================================================================== */
 function abortProbabilityFromLastDifference(sellerOffer, buyerOffer) {
   const f      = state.scale || 1.0;
@@ -236,7 +239,7 @@ function abortProbabilityFromLastDifference(sellerOffer, buyerOffer) {
   if (!Number.isFinite(buyer)) return 0;
 
   const diff = Math.abs(seller - buyer);
-  const BASE_DIFF = 3000 * f; // 3000 × Multiplikator → 30 %
+  const BASE_DIFF = 3000 * f; // Differenz 3000 × Multiplikator → 30 %
 
   let chance = (diff / BASE_DIFF) * 30;
   if (chance < 0)   chance = 0;
@@ -255,10 +258,10 @@ function maybeAbort(userOffer) {
   const seller = state.current_offer;
   const buyer  = roundEuro(userOffer);
 
-  // Basisrisiko
+  // Basisrisiko aus Differenz
   let baseChance = abortProbabilityFromLastDifference(seller, buyer);
 
-  // Pattern-Zuschlag: 1. Warnrunde +2 %, 2. +4 %, 3. +6 % etc.
+  // Zusatzrisiko durch Warnung: +2 % pro Warnrunde
   let extraChance = 0;
   if (state.patternActive && state.patternRiskRounds > 0) {
     extraChance = 2 * state.patternRiskRounds;
@@ -267,7 +270,7 @@ function maybeAbort(userOffer) {
   let totalChance = baseChance + extraChance;
   if (totalChance > 100) totalChance = 100;
 
-  // Abbruchwahrscheinlichkeit für Anzeige merken (ohne Zerlegung)
+  // Abbruchwahrscheinlichkeit für Anzeige merken (nur Gesamtwert)
   state.last_abort_chance = totalChance;
 
   // Vor Runde 4 KEIN Abbruch – nur Anzeige
@@ -594,11 +597,11 @@ function handleSubmit(raw) {
   }
 
   // Zusätzliche Regel:
-  // Wenn Käufer-Angebot > 5 % unter dem letzten Verkäuferangebot liegt,
-  // aber immerhin ≥ dem nächsten geplanten Schritt des Verkäufers,
+  // Wenn das Angebot des Käufers mehr als 5 % unter dem letzten Angebot des Verkäufers liegt,
+  // aber mindestens so hoch ist wie der nächste Schritt des Verkäufers,
   // akzeptiert der Verkäufer dieses Angebot.
   const simulatedNext = computeNextOffer(); // nächster Schritt aus aktueller Situation
-  const diffRatio = Math.abs(prevOffer - num) / prevOffer;
+  const diffRatio = (prevOffer - num) / prevOffer;
 
   if (diffRatio > 0.05 && num >= simulatedNext && num < prevOffer) {
     state.history.push({
@@ -669,7 +672,7 @@ function viewDecision() {
     <p class="muted">Teilnehmer-ID: ${state.participant_id}</p>
 
     <div class="card" style="padding:16px;border:1px dashed var(--accent);">
-      <strong>Letztes Angebot:</strong> ${eur(state.current_offer)}
+      <strong>Letztes Angebot:</strong> ${eur(state.current_offer)}</strong>
     </div>
 
     <button id="takeBtn">Annehmen</button>
