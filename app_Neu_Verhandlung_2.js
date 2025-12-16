@@ -58,22 +58,10 @@ const eur = (n) =>
 const app = document.getElementById("app");
 
 /* ========================================================================== */
-/* Multiplikatoren (Dimensionen) 1x–5x                                       */
+/* Multiplikator: reelle Zufallszahl zwischen 1 und 5                         */
 /* ========================================================================== */
-const DIM_FACTORS = [1, 2, 3, 4, 5];
-let DIM_QUEUE = [];
-
-function shuffleDimensions() {
-  DIM_QUEUE = [...DIM_FACTORS];
-  for (let i = DIM_QUEUE.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [DIM_QUEUE[i], DIM_QUEUE[j]] = [DIM_QUEUE[j], DIM_QUEUE[i]];
-  }
-}
-
 function nextDimension() {
-  if (DIM_QUEUE.length === 0) shuffleDimensions();
-  return DIM_QUEUE.pop();
+  return 1 + Math.random() * 4; // [1,5)
 }
 
 /* ========================================================================== */
@@ -238,7 +226,7 @@ function updatePatternState(currentBuyerOffer) {
 /* ========================================================================== */
 /* Abbruchwahrscheinlichkeit (Basis)                                         */
 /*  - Referenz: Differenz 3000 * Multiplikator → 30 %                       */
-/*  - Angebote < 1500 * Multiplikator → Basis 100 %                         */
+/*  - Basisfunktion für alle Runden (Abbruch aber erst ab Runde 4)          */
 /* ========================================================================== */
 function abortProbabilityFromLastDifference(sellerOffer, buyerOffer) {
   const f      = state.scale || 1.0;
@@ -247,16 +235,11 @@ function abortProbabilityFromLastDifference(sellerOffer, buyerOffer) {
 
   if (!Number.isFinite(buyer)) return 0;
 
-  // Extrem niedrige Angebote → Basisrisiko 100 %
-  if (buyer < roundEuro(1500 * f)) {
-    return 100;
-  }
-
   const diff = Math.abs(seller - buyer);
   const BASE_DIFF = 3000 * f; // 3000 × Multiplikator → 30 %
 
   let chance = (diff / BASE_DIFF) * 30;
-  if (chance < 0) chance = 0;
+  if (chance < 0)   chance = 0;
   if (chance > 100) chance = 100;
 
   return Math.round(chance);
@@ -284,7 +267,7 @@ function maybeAbort(userOffer) {
   let totalChance = baseChance + extraChance;
   if (totalChance > 100) totalChance = 100;
 
-  // Abbruchwahrscheinlichkeit für Anzeige merken
+  // Abbruchwahrscheinlichkeit für Anzeige merken (ohne Zerlegung)
   state.last_abort_chance = totalChance;
 
   // Vor Runde 4 KEIN Abbruch – nur Anzeige
@@ -523,7 +506,7 @@ function viewNegotiate(errorMsg) {
 
     ${historyTable()}
     ${errorMsg ? `<p class="error">${errorMsg}</p>` : ""}
-  ";
+  `;
 
   const inputEl = document.getElementById("counter");
   inputEl.onkeydown = (e) => {
@@ -611,7 +594,7 @@ function handleSubmit(raw) {
   }
 
   // Zusätzliche Regel:
-  // Wenn Käufer-Angebot mehr als 5 % unter dem letzten Verkäuferangebot liegt,
+  // Wenn Käufer-Angebot > 5 % unter dem letzten Verkäuferangebot liegt,
   // aber immerhin ≥ dem nächsten geplanten Schritt des Verkäufers,
   // akzeptiert der Verkäufer dieses Angebot.
   const simulatedNext = computeNextOffer(); // nächster Schritt aus aktueller Situation
