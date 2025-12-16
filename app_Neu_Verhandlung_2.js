@@ -228,8 +228,8 @@ function updatePatternState(currentBuyerOffer) {
 
 /* ========================================================================== */
 /* Abbruchwahrscheinlichkeit (Basis)                                         */
-/*  - Referenz: Differenz 3000 * Multiplikator → 30 %                       */
-/*  - gilt ab Runde 1 (Abbruch aber erst ab Runde 4)                         */
+/*  - Referenz: Differenz 3000 * Multiplikator → 25 %                       */
+/*  - gilt ab Runde 1 (Abbruch aber erst ab Runde 3)                         */
 /* ========================================================================== */
 function abortProbabilityFromLastDifference(sellerOffer, buyerOffer) {
   const f      = state.scale || 1.0;
@@ -239,9 +239,10 @@ function abortProbabilityFromLastDifference(sellerOffer, buyerOffer) {
   if (!Number.isFinite(buyer)) return 0;
 
   const diff = Math.abs(seller - buyer);
-  const BASE_DIFF = 3000 * f; // Differenz 3000 × Multiplikator → 30 %
+  const BASE_DIFF = 3000 * f; // Differenz 3000 × Multiplikator → 25 %
 
-  let chance = (diff / BASE_DIFF) * 30;
+  // Basis: bei diff = 3000 * f → 25 %
+  let chance = (diff / BASE_DIFF) * 25;
   if (chance < 0)   chance = 0;
   if (chance > 100) chance = 100;
 
@@ -252,7 +253,7 @@ function abortProbabilityFromLastDifference(sellerOffer, buyerOffer) {
 /* Abbruchentscheidung                                                       */
 /*  - Basisrisiko wie oben                                                  */
 /*  - Pattern-Aufschlag: +2 % je Warnrunde (kumulativ)                      */
-/*  - tatsächlicher Abbruch erst ab Runde 4                                 */
+/*  - tatsächlicher Abbruch erst ab Runde 3                                 */
 /* ========================================================================== */
 function maybeAbort(userOffer) {
   const seller = state.current_offer;
@@ -273,8 +274,8 @@ function maybeAbort(userOffer) {
   // Abbruchwahrscheinlichkeit für Anzeige merken (nur Gesamtwert)
   state.last_abort_chance = totalChance;
 
-  // Vor Runde 4 KEIN Abbruch – nur Anzeige
-  if (state.runde < 4) {
+  // Vor Runde 3 KEIN Abbruch – nur Anzeige
+  if (state.runde < 3) {
     return false;
   }
 
